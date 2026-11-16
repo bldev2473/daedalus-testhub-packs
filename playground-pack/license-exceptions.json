@@ -1,0 +1,29 @@
+{
+  "_comment": "package.json 에 라이선스 표기가 없는 패키지와 그 근거. 빌드의 라이선스 검사가 읽는다. 판이 바뀌면 근거를 다시 확인하고 고친다",
+  "packages": {
+    "@medusajs/admin-bundler@2.18.0": {
+      "license": "MIT",
+      "evidence": "Medusa 저장소 v2.18.0 루트 LICENSE(MIT), 패키지 위치 packages/admin/admin-bundler. https://github.com/medusajs/medusa/blob/v2.18.0/LICENSE"
+    },
+    "@medusajs/admin-sdk@2.18.0": {
+      "license": "MIT",
+      "evidence": "Medusa 저장소 v2.18.0 루트 LICENSE(MIT), 패키지 위치 packages/admin/admin-sdk. https://github.com/medusajs/medusa/blob/v2.18.0/LICENSE"
+    },
+    "@medusajs/admin-shared@2.18.0": {
+      "license": "MIT",
+      "evidence": "Medusa 저장소 v2.18.0 루트 LICENSE(MIT), 패키지 위치 packages/admin/admin-shared. https://github.com/medusajs/medusa/blob/v2.18.0/LICENSE"
+    },
+    "@medusajs/admin-vite-plugin@2.18.0": {
+      "license": "MIT",
+      "evidence": "Medusa 저장소 v2.18.0 루트 LICENSE(MIT), 패키지 위치 packages/admin/admin-vite-plugin. https://github.com/medusajs/medusa/blob/v2.18.0/LICENSE"
+    },
+    "@medusajs/dashboard@2.18.0": {
+      "license": "MIT",
+      "evidence": "Medusa 저장소 v2.18.0 루트 LICENSE(MIT), 패키지 위치 packages/admin/dashboard. https://github.com/medusajs/medusa/blob/v2.18.0/LICENSE"
+    },
+    "connect-dynamodb@3.0.5": {
+      "license": "MIT",
+      "evidence": "패키지 안의 LICENSE.txt (The MIT License)"
+    }
+  }
+}
