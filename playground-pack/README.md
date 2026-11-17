@@ -123,7 +123,7 @@ Medusa 2.18.0의 `@medusajs/utils`(`modules-sdk/joiner-config-builder.js`)는 �
 | Medusa 시작 | 약 4초 |
 | 초기화 | 약 0.3초 |
 
-운영체제별 팩은 `.github/workflows/web-pack.yml`이 만들고 테스트합니다 (2026-11-16, Node 24).
+아래는 팩을 운영체제별로 따로 만들던 0.1.0 때 `.github/workflows/web-pack.yml`에서 잰 값입니다 (2026-11-16, Node 24). 지금은 공개 저장소 daedalus-testhub-packs가 Linux에서 팩 하나를 만들어 올리고, 앱을 빌드할 때 `release.yml`이 그 공개된 팩을 Windows(그리고 macOS)에서 풀어 테스트합니다.
 
 | 플랫폼 | 팩 (tar.gz) | 빌드 | 테스트 |
 | --- | --- | --- | --- |

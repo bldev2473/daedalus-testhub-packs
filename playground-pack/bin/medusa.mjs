@@ -19,7 +19,7 @@ const backend = resolve(process.env.TESTHUB_MEDUSA_DIR || join(here, "..", "back
 
 const xdg = process.env.XDG_CONFIG_HOME
 if (!xdg) {
-  console.error("medusa.mjs: XDG_CONFIG_HOME 이 없다. Medusa CLI 가 사용자 홈에 설정을 쓰지 않게 실습 환경 아래 폴더를 준다")
+  console.error("medusa.mjs: XDG_CONFIG_HOME이 없다. Medusa CLI가 사용자 홈에 설정을 쓰지 않게 실습 환경 아래 폴더를 지정한다")
   process.exit(2)
 }
 
@@ -47,15 +47,15 @@ process.env.NODE_ENV ||= "production"
 const beforeModules = realpathSync(backend)
 if (beforeModules.includes("dist")) {
   console.error(
-    `medusa.mjs: Medusa 는 경로에 "dist" 라는 글자가 있으면 동작하지 않는다 (Medusa 2.18.0 결함): ${beforeModules}\n` +
-      "실습 환경 폴더(TESTHUB_PLAYGROUND_HOME)를 dist 가 들어가지 않는 경로로 옮긴다",
+    `medusa.mjs: Medusa는 경로에 "dist"라는 글자가 포함되면 동작하지 않는다 (Medusa 2.18.0 결함): ${beforeModules}\n` +
+      "실습 환경 폴더(TESTHUB_PLAYGROUND_HOME)를 dist가 포함되지 않는 경로로 옮긴다",
   )
   process.exit(3)
 }
 
 const cli = join(backend, "node_modules", "@medusajs", "cli", "cli.js")
 if (!existsSync(cli)) {
-  console.error(`medusa.mjs: Medusa CLI 가 없다: ${cli}`)
+  console.error(`medusa.mjs: Medusa CLI가 없다: ${cli}`)
   process.exit(2)
 }
 process.chdir(backend)

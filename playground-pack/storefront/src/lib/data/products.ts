@@ -1,6 +1,7 @@
 "use server"
 
 import { sdk } from "@lib/config"
+import { faultOn } from "@lib/faults"
 import { OptionValueIds } from "@lib/util/product-option-filters"
 import { sortProducts } from "@lib/util/sort-products"
 import { HttpTypes } from "@medusajs/types"
@@ -130,7 +131,11 @@ export const listProductsWithSort = async ({
     countryCode,
   })
 
-  const sortedProducts = sortProducts(products, sortBy)
+  let sortedProducts = sortProducts(products, sortBy)
+  // testhub 결함 F07: 낮은 가격순으로 정렬하면 가장 싼 상품이 맨 뒤에 온다
+  if (faultOn("F07") && sortBy === "price_asc" && sortedProducts.length > 1) {
+    sortedProducts = [...sortedProducts.slice(1), sortedProducts[0]]
+  }
 
   const pageParam = (page - 1) * limit
 

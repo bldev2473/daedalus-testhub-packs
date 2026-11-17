@@ -1,6 +1,7 @@
 "use server"
 
 import { sdk } from "@lib/config"
+import { faultOn } from "@lib/faults"
 import medusaError from "@lib/util/medusa-error"
 import { HttpTypes } from "@medusajs/types"
 import { revalidateTag } from "next/cache"
@@ -46,8 +47,22 @@ export async function retrieveCart(cartId?: string, fields?: string) {
       headers,
       cache: "no-store",
     })
-    .then(({ cart }: { cart: HttpTypes.StoreCart }) => cart)
+    .then(({ cart }: { cart: HttpTypes.StoreCart }) => miscount(cart))
     .catch(() => null)
+}
+
+// testhub 결함 F03: 화면의 합계가 상품 2개 이상일 때 마지막 상품을 빼고 계산된다 (API의 합계는 정상)
+function miscount(cart: HttpTypes.StoreCart): HttpTypes.StoreCart {
+  const items = cart.items ?? []
+  if (!faultOn("F03") || items.length < 2) return cart
+  const last = items[items.length - 1]
+  const lost = Number(last.subtotal ?? last.total ?? 0)
+  return {
+    ...cart,
+    item_subtotal: Number(cart.item_subtotal ?? 0) - lost,
+    subtotal: Number(cart.subtotal ?? 0) - lost,
+    total: Number(cart.total ?? 0) - lost,
+  }
 }
 
 export async function getOrSetCart(countryCode: string) {

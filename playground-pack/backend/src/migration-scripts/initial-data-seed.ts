@@ -554,11 +554,11 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
+                  amount: 30,
                   currency_code: "eur",
                 },
                 {
-                  amount: 15,
+                  amount: 35,
                   currency_code: "usd",
                 },
               ],
@@ -571,11 +571,11 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
+                  amount: 30,
                   currency_code: "eur",
                 },
                 {
-                  amount: 15,
+                  amount: 35,
                   currency_code: "usd",
                 },
               ],
@@ -588,11 +588,11 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
+                  amount: 30,
                   currency_code: "eur",
                 },
                 {
-                  amount: 15,
+                  amount: 35,
                   currency_code: "usd",
                 },
               ],
@@ -605,11 +605,11 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
+                  amount: 30,
                   currency_code: "eur",
                 },
                 {
-                  amount: 15,
+                  amount: 35,
                   currency_code: "usd",
                 },
               ],
@@ -650,11 +650,11 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
+                  amount: 25,
                   currency_code: "eur",
                 },
                 {
-                  amount: 15,
+                  amount: 30,
                   currency_code: "usd",
                 },
               ],
@@ -667,11 +667,11 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
+                  amount: 25,
                   currency_code: "eur",
                 },
                 {
-                  amount: 15,
+                  amount: 30,
                   currency_code: "usd",
                 },
               ],
@@ -684,11 +684,11 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
+                  amount: 25,
                   currency_code: "eur",
                 },
                 {
-                  amount: 15,
+                  amount: 30,
                   currency_code: "usd",
                 },
               ],
@@ -701,11 +701,11 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
+                  amount: 25,
                   currency_code: "eur",
                 },
                 {
-                  amount: 15,
+                  amount: 30,
                   currency_code: "usd",
                 },
               ],
@@ -746,11 +746,11 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
+                  amount: 15,
                   currency_code: "eur",
                 },
                 {
-                  amount: 15,
+                  amount: 20,
                   currency_code: "usd",
                 },
               ],
@@ -763,11 +763,11 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
+                  amount: 15,
                   currency_code: "eur",
                 },
                 {
-                  amount: 15,
+                  amount: 20,
                   currency_code: "usd",
                 },
               ],
@@ -780,11 +780,11 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
+                  amount: 15,
                   currency_code: "eur",
                 },
                 {
-                  amount: 15,
+                  amount: 20,
                   currency_code: "usd",
                 },
               ],
@@ -797,11 +797,11 @@ export default async function initial_data_seed({
               },
               prices: [
                 {
-                  amount: 10,
+                  amount: 15,
                   currency_code: "eur",
                 },
                 {
-                  amount: 15,
+                  amount: 20,
                   currency_code: "usd",
                 },
               ],

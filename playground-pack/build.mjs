@@ -18,6 +18,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { checkLicenses, MEDUSA_VERSION, medusaVersionViolations } from "./lib/checks.mjs"
 import { postgresPackages, removePlatformPackages } from "./lib/platforms.mjs"
+import { FAULT_CONFLICTS, FAULTS } from "./lib/faults.mjs"
 
 const root = dirname(fileURLToPath(import.meta.url))
 const backend = join(root, "backend")
@@ -157,6 +158,8 @@ try {
     node_engines: pkg.engines.node,
     postgres,
     starter: STARTER,
+    faults: FAULTS.map((f) => f.id),
+    fault_conflicts: FAULT_CONFLICTS,
     built_at: new Date().toISOString(),
   }
   writeFileSync(join(stage, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`)

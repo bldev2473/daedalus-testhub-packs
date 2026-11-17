@@ -2,7 +2,7 @@
 // 팩에서 빼고, 학습자 컴퓨터에서 그 운영체제의 것만 넣는다 (데스크톱 앱은 설치 파일에 넣어 두고, 아니면 npm 에서 받는다).
 // build.mjs, 팩 시험, 데스크톱 앱 빌드(desktop/build-postgres.mjs)가 함께 쓴다
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs"
-import { join } from "node:path"
+import { join, sep } from "node:path"
 
 // 지원 플랫폼(process.platform-process.arch)과 그 플랫폼의 PostgreSQL 패키지. linux-x64 는 개발과 CI 용
 export const POSTGRES_PACKAGES = {
@@ -92,7 +92,7 @@ export function platformPackagesLeft(root) {
       if (existsSync(pj)) {
         try {
           const meta = JSON.parse(readFileSync(pj, "utf8"))
-          if (meta.os || meta.cpu) left.push(p.slice(root.length + 1))
+          if (meta.os || meta.cpu) left.push(p.slice(root.length + 1).split(sep).join("/"))
         } catch {
           // 무시
         }

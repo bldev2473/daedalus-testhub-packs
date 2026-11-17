@@ -14,6 +14,8 @@
 //   node db.mjs snapshot <port>             medusa 를 복제해 medusa_seed 를 만든다 (있으면 바꾼다)
 //   node db.mjs reset <port>                medusa 를 지우고 medusa_seed 에서 다시 만든다
 //   node db.mjs publishable-key <port>      시드가 만든 publishable key 를 stdout 에 쓴다
+//   node db.mjs reader <port> <password>    읽기 전용 계정 testhub_reader 를 만든다 (있으면 비밀번호만 바꾼다).
+//                                           학습자의 DB 검증 테스트가 쓴다. snapshot 전에 해야 초기화한 DB 에도 권한이 남는다
 //
 // 접속: localhost, 사용자 postgres, 비밀번호 postgres. 서버는 localhost 에서만 듣는다 (PostgreSQL 기본값).
 // 묶음 PostgreSQL 에는 pg_dump 가 없어 초기화는 템플릿 DB 복제로 한다.
@@ -28,6 +30,7 @@ import pg from "pg"
 const USER = "postgres"
 const PASSWORD = "postgres"
 const DB = "medusa"
+const READER = "testhub_reader"
 const SEED_DB = "medusa_seed"
 const isRoot = typeof process.getuid === "function" && process.getuid() === 0
 
@@ -135,7 +138,7 @@ switch (cmd) {
     })
     if (started.status !== 0) {
       const tail = existsSync(log) ? readFileSync(log, "utf8").split(/\r?\n/).slice(-20).join("\n") : "(로그 없음)"
-      fail(`PostgreSQL 을 시작하지 못했다 (pg_ctl 종료 코드 ${started.status}):\n${tail}`, 1)
+      fail(`PostgreSQL을 시작하지 못했다 (pg_ctl 종료 코드 ${started.status}):\n${tail}`, 1)
     }
     console.log("PG READY")
 
@@ -166,7 +169,7 @@ switch (cmd) {
     }
     setInterval(() => {
       if (stopping || alive()) return
-      console.error("db.mjs: PostgreSQL 이 끝났다")
+      console.error("db.mjs: PostgreSQL이 끝났다")
       process.exit(1)
     }, 1000)
     break
@@ -203,7 +206,7 @@ switch (cmd) {
     if (!port) fail("사용법: reset <port>")
     await withClient(port, "postgres", async (c) => {
       const { rowCount } = await c.query("select 1 from pg_database where datname = $1", [SEED_DB])
-      if (!rowCount) fail(`${SEED_DB} 가 없다. 시드 직후 snapshot 을 먼저 한다`, 1)
+      if (!rowCount) fail(`${SEED_DB}가 없다. 시드 직후 snapshot을 먼저 한다`, 1)
       await terminate(c, DB)
       await c.query(`drop database if exists ${ident(DB)} with (force)`)
       await c.query(`create database ${ident(DB)} template ${ident(SEED_DB)}`)
@@ -220,10 +223,28 @@ switch (cmd) {
       )
       return r.rows[0]?.token
     })
-    if (!token) fail("publishable key 가 없다. 시드가 돌았는지 본다", 1)
+    if (!token) fail("publishable key가 없다. 시드가 돌았는지 본다", 1)
     console.log(token)
     break
   }
+  case "reader": {
+    const [port, password] = args
+    if (!port || !password) fail("사용법: reader <port> <password>")
+    await withClient(port, "postgres", async (c) => {
+      const { rowCount } = await c.query("select 1 from pg_roles where rolname = $1", [READER])
+      // 비밀번호는 식별자가 아니라 문자열 리터럴이다. 작은따옴표를 겹쳐 쓴다
+      const lit = `'${password.replaceAll("'", "''")}'`
+      await c.query(`${rowCount ? "alter" : "create"} role ${ident(READER)} login password ${lit}`)
+      await c.query(`grant connect on database ${ident(DB)} to ${ident(READER)}`)
+    })
+    await withClient(port, DB, async (c) => {
+      await c.query(`grant usage on schema public to ${ident(READER)}`)
+      await c.query(`grant select on all tables in schema public to ${ident(READER)}`)
+      await c.query(`alter default privileges in schema public grant select on tables to ${ident(READER)}`)
+    })
+    console.log(`PG READER ${READER}`)
+    break
+  }
   default:
-    fail(`모르는 명령: ${cmd ?? "(없음)"}. init, start, stop, create, snapshot, reset, publishable-key`)
+    fail(`모르는 명령: ${cmd ?? "(없음)"}. init, start, stop, create, snapshot, reset, publishable-key, reader`)
 }

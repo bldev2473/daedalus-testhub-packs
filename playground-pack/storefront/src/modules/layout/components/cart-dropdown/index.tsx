@@ -21,8 +21,10 @@ import { Fragment, useEffect, useRef, useState } from "react"
 
 const CartDropdown = ({
   cart: cartProp,
+  countLines = false,
 }: {
   cart?: HttpTypes.StoreCart | null
+  countLines?: boolean
 }) => {
   // testhub 실습 환경: 장바구니가 바뀌었다는 알림(lib/util/cart-events)을 받으면 서버 액션으로 직접 다시 읽는다.
   // 서버가 새 props 를 보내면 그것을 쓴다
@@ -56,7 +58,7 @@ const CartDropdown = ({
 
   const totalItems =
     cartState?.items?.reduce((acc, item) => {
-      return acc + item.quantity
+      return acc + (countLines ? 1 : item.quantity)
     }, 0) || 0
 
   const subtotal = cartState?.subtotal ?? 0

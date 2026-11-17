@@ -11,6 +11,7 @@ import { dirname, join } from "node:path"
 import { after, before, describe, test } from "node:test"
 import { fileURLToPath } from "node:url"
 import { checkLicenses, MEDUSA_VERSION, medusaVersionViolations } from "../lib/checks.mjs"
+import { FAULT_CONFLICTS, FAULTS } from "../lib/faults.mjs"
 import { platformPackagesLeft, POSTGRES_PACKAGES, postgresPackages } from "../lib/platforms.mjs"
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
@@ -395,6 +396,193 @@ describe("만든 팩", { skip: !existsSync(archive) && `팩이 없다 (먼저 no
     medusa.kill("SIGTERM")
     await exited(front, 15_000)
     await exited(medusa, 30_000)
+    stopPg(pgProc)
+    assert.equal(await exited(pgProc, 30_000), 0)
+  })
+
+  test("결함: 끄면 증상이 없고, 켜면 결함마다 증상이 나온다 (API, DB, 화면)", { timeout: 600_000 }, async () => {
+    const datadir = join(work, "pg-faults")
+    const [pgPort, medusaPort, storePort] = [await freePort(), await freePort(), await freePort()]
+    const home = join(work, "home-faults")
+    mkdirSync(home)
+    const db = (...a) => node([join(pack, "bin", "db.mjs"), ...a])
+    const store = `http://localhost:${storePort}`
+    const base = `http://localhost:${medusaPort}`
+
+    // 팩이 지원하는 결함 번호가 manifest 에 있다
+    const manifest = JSON.parse(readFileSync(join(pack, "manifest.json"), "utf8"))
+    assert.deepEqual(manifest.faults, FAULTS.map((f) => f.id))
+    assert.deepEqual(manifest.fault_conflicts, FAULT_CONFLICTS)
+
+    db("init", datadir)
+    const pgProc = spawn(process.execPath, [join(pack, "bin", "db.mjs"), "start", datadir, String(pgPort), "--until-stdin-closes"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    })
+    procs.push(pgProc)
+    await waitForLine(pgProc, "PG READY", 60_000)
+    db("create", String(pgPort), "medusa")
+    const medusaEnv = {
+      ...process.env,
+      HOME: home,
+      USERPROFILE: home,
+      XDG_CONFIG_HOME: join(work, "config-faults"),
+      DATABASE_URL: `postgres://postgres:postgres@localhost:${pgPort}/medusa`,
+      STORE_CORS: store,
+      ADMIN_CORS: base,
+      AUTH_CORS: `${base},${store}`,
+      JWT_SECRET: "test-jwt",
+      COOKIE_SECRET: "test-cookie",
+      PORT: String(medusaPort),
+    }
+    node([join(pack, "bin", "medusa.mjs"), "db:migrate"], { env: medusaEnv })
+    // 읽기 전용 계정은 스냅숏 전에 만든다. 초기화한 DB 에도 권한이 남는다
+    assert.equal(db("reader", String(pgPort), "reader-pw"), "PG READER testhub_reader")
+    db("snapshot", String(pgPort))
+    const key = db("publishable-key", String(pgPort))
+    const pg = createRequire(join(pack, "package.json"))("pg")
+
+    // 학습자의 DB 검증이 쓰는 읽기 전용 계정: 읽을 수 있고 쓸 수 없다. 초기화한 뒤에도 같다
+    const asReader = async (fn) => {
+      const c = new pg.Client({ host: "localhost", port: pgPort, user: "testhub_reader", password: "reader-pw", database: "medusa" })
+      await c.connect()
+      try {
+        return await fn(c)
+      } finally {
+        await c.end()
+      }
+    }
+    const readerCheck = async () =>
+      asReader(async (c) => {
+        assert.equal((await c.query("select count(*)::int as n from product")).rows[0].n, 4)
+        await assert.rejects(c.query("delete from cart_line_item"), /permission denied/)
+      })
+    await readerCheck()
+    db("reset", String(pgPort))
+    await readerCheck()
+
+    let medusa, front
+    const up = async (faults) => {
+      const env = { ...medusaEnv, ...(faults ? { TESTHUB_FAULTS: faults } : {}) }
+      medusa = spawn(process.execPath, [join(pack, "bin", "medusa.mjs"), "start"], { env, stdio: "ignore" })
+      procs.push(medusa)
+      await waitForHttp(`${base}/health`, 90_000)
+      front = spawn(process.execPath, [join(pack, "storefront", "server.js")], {
+        env: {
+          ...process.env,
+          HOME: home,
+          USERPROFILE: home,
+          NODE_ENV: "production",
+          NEXT_TELEMETRY_DISABLED: "1",
+          PORT: String(storePort),
+          HOSTNAME: "localhost",
+          MEDUSA_BACKEND_URL: base,
+          MEDUSA_PUBLISHABLE_KEY: key,
+          DEFAULT_REGION: "dk",
+          ...(faults ? { TESTHUB_FAULTS: faults } : {}),
+        },
+        stdio: "ignore",
+      })
+      procs.push(front)
+      await waitForHttp(`${store}/dk/store`, 60_000)
+    }
+    const down = async () => {
+      front.kill("SIGTERM")
+      medusa.kill("SIGTERM")
+      await exited(front, 15_000)
+      await exited(medusa, 30_000)
+    }
+
+    // 결함마다 증상을 본다. 증상이 있으면 true
+    const api = async (method, path, body) => {
+      const t0 = Date.now()
+      const r = await fetch(base + path, {
+        method,
+        headers: { "content-type": "application/json", "x-publishable-api-key": key },
+        body: body && JSON.stringify(body),
+      })
+      const data = await r.json().catch(() => null)
+      return { status: r.status, data, ms: Date.now() - t0 }
+    }
+    const symptoms = async (screen = true) => {
+      const region = (await api("GET", "/store/regions")).data.regions[0].id
+      const shirt = (await api("GET", "/store/products?fields=*variants&handle=t-shirt")).data.products[0]
+      const variant = (t) => shirt.variants.find((v) => v.title === t).id
+      const cart = async () => (await api("POST", "/store/carts", { region_id: region })).data.cart.id
+      const dbQty = (id) =>
+        asReader(async (c) =>
+          (await c.query("select quantity from cart_line_item where cart_id = $1 and deleted_at is null", [id])).rows.map((r) => Number(r.quantity)),
+        )
+      const s = {}
+      // F01, F04: M / Black 2개를 담고 다시 조회, DB 확인
+      let id = await cart()
+      const added = await api("POST", `/store/carts/${id}/line-items`, { variant_id: variant("M / Black"), quantity: 2 })
+      const again = (await api("GET", `/store/carts/${id}`)).data.cart.items.map((i) => i.quantity)
+      s.F01 = added.status === 200 && added.data.cart.items[0]?.quantity === 1
+      s.F04 = added.status === 200 && added.data.cart.items.length === 1 && again.length === 0 && (await dbQty(id)).length === 0
+      // F02: XL / Black
+      id = await cart()
+      s.F02 = (await api("POST", `/store/carts/${id}/line-items`, { variant_id: variant("XL / Black"), quantity: 1 })).status === 500
+      // F08: 담은 뒤 수량을 0으로 바꾼다. 정상이면 항목이 지워진다
+      id = await cart()
+      const line = (await api("POST", `/store/carts/${id}/line-items`, { variant_id: variant("S / White"), quantity: 1 })).data.cart.items[0]
+      s.F08 = line ? (await api("POST", `/store/carts/${id}/line-items/${line.id}`, { quantity: 0 }), (await dbQty(id)).join() === "0") : false
+      // F05: 상품 목록 10번 중 2번 이상 2.5초를 넘는다
+      let slow = 0
+      for (let i = 0; i < 10; i++) if ((await api("GET", "/store/products?limit=5")).ms > 2500) slow++
+      s.F05 = slow >= 2
+
+      if (!screen) return s
+      // 화면: 정렬(F07), 같은 상품 두 번 담은 뒤 머리글 개수(F06), 장바구니 화면 소계와 API 합계(F03)
+      const { chromium } = createRequire(join(root, "package.json"))("playwright-core")
+      const browser = await chromium.launch(process.env.TESTHUB_CHROME_BINARY ? { executablePath: process.env.TESTHUB_CHROME_BINARY } : {})
+      try {
+        const page = await browser.newPage()
+        await page.goto(`${store}/dk/store?sortBy=price_asc`)
+        await page.getByTestId("product-wrapper").first().waitFor({ timeout: 30_000 })
+        const order = await page.getByTestId("product-wrapper").evaluateAll((els) => els.map((e) => e.innerText.split("\n")[0]))
+        s.F07 = order[0] !== "Medusa T-Shirt"
+        const add = async (path, opts, count) => {
+          await page.goto(`${store}/dk/products/${path}`)
+          for (const o of opts) await page.getByTestId("option-button").filter({ hasText: new RegExp(`^${o}$`) }).first().click()
+          await page.getByTestId("add-product-button").click()
+          await page.getByTestId("nav-cart-link").filter({ hasText: `(${count})` }).first().waitFor({ timeout: 15_000 }).catch(() => {})
+        }
+        await add("t-shirt", ["Black", "M"], 1)
+        await add("t-shirt", ["Black", "M"], 2)
+        s.F06 = (await page.getByTestId("nav-cart-link").first().innerText()).includes("(1)")
+        await add("sweatshirt", ["M"], 3)
+        await page.goto(`${store}/dk/cart`)
+        const ui = Number(await page.getByTestId("cart-subtotal").getAttribute("data-value", { timeout: 20_000 }))
+        const cartId = (await page.context().cookies()).find((c) => c.name === "_medusa_cart_id")?.value
+        const apiCart = (await api("GET", `/store/carts/${cartId}`)).data.cart
+        s.F03 = apiCart.items.length >= 2 && ui !== Number(apiCart.item_subtotal)
+      } finally {
+        await browser.close()
+      }
+      return s
+    }
+
+    // F04 는 담은 상품을 지워, 담은 뒤를 보는 결함(F03, F06, F08)을 볼 수 없게 한다 (함께 켜지 않는다: FAULT_CONFLICTS).
+    // 그래서 세 묶음으로 나눠 켠다. 묶음마다 켠 결함만 증상이 나와야 한다
+    const expect = (on) => Object.fromEntries(FAULTS.map((f) => [f.id, on.includes(f.id)]))
+    await up("")
+    assert.deepEqual(await symptoms(), expect([]), "결함을 켜지 않으면 증상이 없다")
+    await down()
+    for (const group of [["F01", "F02", "F05", "F08"], ["F04"], ["F03", "F06", "F07"]]) {
+      db("reset", String(pgPort))
+      await up(group.join(","))
+      const screen = !group.includes("F04")
+      const seen = await symptoms(screen)
+      const want = expect(group)
+      if (!screen) for (const id of ["F03", "F06", "F07", "F08"]) delete want[id], delete seen[id]
+      assert.deepEqual(seen, want, `켠 결함(${group.join(",")})만 증상이 나온다`)
+      await down()
+    }
+
+    // 결함을 켜고 쓴 뒤 초기화하면 데이터는 시드 직후로 돌아온다
+    db("reset", String(pgPort))
+    assert.equal(await asReader(async (c) => (await c.query("select count(*)::int as n from cart")).rows[0].n), 0)
+
     stopPg(pgProc)
     assert.equal(await exited(pgProc, 30_000), 0)
   })
