@@ -124,9 +124,17 @@ describe("저장소", () => {
       mk("ok", { name: "ok", version: "1.0.0", license: "MIT" })
       mk("bare", { name: "bare", version: "1.0.0" })
       mk("copyleft", { name: "copyleft", version: "1.0.0", license: "LGPL-3.0" })
+      // 둘 중 고르는 표기는 쓸 수 있는 쪽을 고르면 된다. 모두 금지이거나 AND면 금지다
+      mk("dual", { name: "dual", version: "1.0.0", license: "MIT or GPL-2.0" })
+      mk("dual-paren", { name: "dual-paren", version: "1.0.0", license: "(MIT OR GPL-3.0)" })
+      mk("both-bad", { name: "both-bad", version: "1.0.0", license: "GPL-2.0 or AGPL-3.0" })
+      mk("and-bad", { name: "and-bad", version: "1.0.0", license: "MIT AND GPL-2.0" })
       const r = checkLicenses([join(d, "node_modules")], { "bare@1.0.0": { license: "MIT", evidence: "시험" }, "gone@1.0.0": {} })
-      assert.equal(r.violations.length, 1)
-      assert.match(r.violations[0], /copyleft@1\.0\.0: 금지/)
+      assert.deepEqual(
+        r.violations.map((v) => v.split(":")[0]).sort(),
+        ["and-bad@1.0.0", "both-bad@1.0.0", "copyleft@1.0.0"]
+      )
+      assert.match(r.violations.find((v) => v.startsWith("copyleft")), /copyleft@1\.0\.0: 금지/)
       assert.deepEqual(r.unusedExceptions, ["gone@1.0.0"])
       const r2 = checkLicenses([join(d, "node_modules")], {})
       assert.ok(r2.violations.some((v) => v.startsWith("bare@1.0.0: 라이선스 표기가 없고")))

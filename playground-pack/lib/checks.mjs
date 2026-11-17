@@ -65,6 +65,16 @@ export function collectPackages(nodeModulesDirs) {
 }
 
 /**
+ * 쓸 수 없는 라이선스인지. "MIT or GPL-2.0"처럼 둘 중 고르는(OR) 표기는 쓸 수 있는 쪽을 고르면 되므로,
+ * 모든 선택지가 금지일 때만 금지다. AND나 하나뿐인 표기는 그대로 본다
+ */
+export function forbidden(license) {
+  const isBad = (l) => FORBIDDEN_LICENSES.some((f) => l.toUpperCase().includes(f.toUpperCase()))
+  const choices = license.split(/\s+or\s+/i).map((l) => l.replace(/[()]/g, "").trim())
+  return choices.every(isBad)
+}
+
+/**
  * 라이선스 검사. exceptions 는 license-exceptions.json 의 packages ({"이름@판": {license, evidence}}).
  * 결과: { packages, violations, unusedExceptions }
  */
@@ -84,8 +94,7 @@ export function checkLicenses(nodeModulesDirs, exceptions) {
       license = ex.license
       p.license = `${ex.license} (예외: ${ex.evidence})`
     }
-    const bad = FORBIDDEN_LICENSES.find((f) => license.toUpperCase().includes(f.toUpperCase()))
-    if (bad) violations.push(`${id}: 금지 라이선스 ${license}`)
+    if (forbidden(license)) violations.push(`${id}: 금지 라이선스 ${license}`)
   }
   const unusedExceptions = Object.keys(exceptions).filter((id) => !used.has(id))
   return { packages, violations, unusedExceptions }

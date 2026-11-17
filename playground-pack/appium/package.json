@@ -1,0 +1,15 @@
+{
+  "name": "testhub-appium-pack",
+  "version": "0.1.0",
+  "private": true,
+  "description": "testhub 실습 환경의 Appium 팩. Appium 서버와 uiautomator2 드라이버를 묶는다",
+  "license": "Apache-2.0",
+  "engines": { "node": "^20.19.0 || ^22.12.0 || >=24.0.0" },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test --test-concurrency=1 test/*.test.mjs"
+  },
+  "dependencies": {
+    "appium": "3.9.1"
+  }
+}
