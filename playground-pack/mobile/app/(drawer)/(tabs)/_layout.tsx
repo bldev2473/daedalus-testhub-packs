@@ -30,6 +30,7 @@ export default function TabLayout() {
         name="(home)"
         options={{
           title: "Medusa Store",
+          tabBarButtonTestID: "tab-home",
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
           headerShown: false, // Let the home stack manage its own headers
         }}
@@ -38,6 +39,7 @@ export default function TabLayout() {
         name="(cart)"
         options={{
           title: "Cart",
+          tabBarButtonTestID: "tab-cart",
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="cart.fill" color={color} />,
           tabBarBadge: itemCount > 0 ? itemCount : undefined,
           tabBarBadgeStyle: {

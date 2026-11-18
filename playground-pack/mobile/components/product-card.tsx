@@ -29,6 +29,7 @@ export const ProductCard = React.memo(function ProductCard({ product }: ProductC
 
   return (
     <TouchableOpacity
+      testID={`product-card-${product.handle}`}
       style={[styles.card, { backgroundColor: colors.background }]}
       onPress={() => router.push({
         pathname: `/(home)/product/${product.id}` as any,

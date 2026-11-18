@@ -12,6 +12,10 @@ testhub의 웹 실습 환경(Medusa 2.18.0)에 붙는 모바일 상점 앱입니
 
 ## 바꾼 것
 
+- Appium이 요소를 찾도록 `testID`를 달았습니다 (아래 "Appium이 찾는 이름"). 안드로이드에서 `testID`는 `resource-id`가 됩니다
+- `lib/sdk.ts`의 기본 publishable key를 testhub 실습 환경의 고정 키로 했습니다 (`src/testhub/playground/components.py`의 `FIXED_PUBLISHABLE_KEY`와 같아야 하고, 테스트가 확인합니다). 다른 Medusa에 붙일 때는 `EXPO_PUBLIC_MEDUSA_PUBLISHABLE_API_KEY`로 바꿉니다
+- `app.json`에 안드로이드 패키지 이름(`com.testhub.shop`)을 정했습니다
+
 - `@medusajs/js-sdk`, `@medusajs/types`를 `2.18.0`으로 고정했습니다 (안내서는 버전을 적지 않고, 예제 저장소는 `preview`입니다)
 - `.env.template`을 더했습니다
 
@@ -25,12 +29,22 @@ testhub의 웹 실습 환경(Medusa 2.18.0)에 붙는 모바일 상점 앱입니
 
 확인하지 못한 것: 안드로이드 기기나 에뮬레이터에서 실제로 돌려 보지 않았습니다 (클라우드 세션에 가상화와 안드로이드 도구가 없습니다). 네이티브 쪽(AsyncStorage 3.x, 선택 상자, 하단 탭)은 웹과 다를 수 있습니다.
 
+## Appium이 찾는 이름
+
+| 화면 | `testID` |
+| --- | --- |
+| 하단 탭 | `tab-home`, `tab-cart` |
+| 상품 카드 | `product-card-<상품 handle>` (예: `product-card-t-shirt`) |
+| 상품 상세 | `option-<옵션 이름>-<값>` (예: `option-Size-M`), `quantity-decrease`, `quantity-increase`, `quantity-value`, `add-to-cart-button` |
+| 장바구니 | `cart-empty`, `cart-subtotal`, `cart-total`, `cart-checkout-button` |
+| 장바구니 줄 | `cart-item-<상품 handle>-<옵션>`, 그 안의 `cart-item-price-…`, `cart-item-quantity-…`, `cart-item-increase-…`, `cart-item-decrease-…`, `cart-item-remove-…` (옵션 예: `M / Black`) |
+
 ## 돌리기
 
 ```bash
-cp .env.template .env      # EXPO_PUBLIC_MEDUSA_PUBLISHABLE_API_KEY에 실습 환경의 publishable key를 넣는다
+cp .env.template .env      # 실습 환경에 붙일 때는 키를 넣지 않아도 된다 (고정 키가 기본값)
 npm ci
-npx expo start             # 안드로이드 에뮬레이터에서는 EXPO_PUBLIC_MEDUSA_URL을 http://10.0.2.2:9000 으로 한다
+npx expo start             # testhub가 켠 에뮬레이터에서는 adb reverse로 localhost:9000이 Medusa에 닿는다 (직접 켠 에뮬레이터는 adb reverse tcp:9000 tcp:9000)
 ```
 
 웹으로 볼 때는 Medusa의 `STORE_CORS`, `AUTH_CORS`에 Expo 주소(`http://localhost:8081`)가 있어야 합니다. 실습 팩은 웹 상점 주소만 허용하므로, 브라우저로 직접 열려면 상점 자리(8000)에 웹 빌드를 올려야 합니다. 네이티브 앱은 CORS와 상관이 없습니다.

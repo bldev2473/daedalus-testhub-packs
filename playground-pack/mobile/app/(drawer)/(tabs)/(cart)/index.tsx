@@ -24,7 +24,7 @@ export default function CartScreen() {
   if (isEmpty) {
     return (
       <View style={[styles.emptyContainer, { backgroundColor: colors.background }]}>
-        <Text style={[styles.emptyTitle, { color: colors.text }]}>Your cart is empty</Text>
+        <Text testID="cart-empty" style={[styles.emptyTitle, { color: colors.text }]}>Your cart is empty</Text>
         <Text style={[styles.emptyText, { color: colors.icon }]}>
           Add some products to get started
         </Text>
@@ -57,7 +57,7 @@ export default function CartScreen() {
         <View style={styles.totals}>
           <View style={styles.totalRow}>
             <Text style={[styles.totalLabel, { color: colors.text }]}>Subtotal</Text>
-            <Text style={[styles.totalValue, { color: colors.text }]}>
+            <Text testID="cart-subtotal" style={[styles.totalValue, { color: colors.text }]}>
               {formatPrice(cart.item_subtotal, cart.currency_code)}
             </Text>
           </View>
@@ -79,12 +79,13 @@ export default function CartScreen() {
           )}
           <View style={[styles.totalRow, styles.grandTotalRow, { borderTopColor: colors.border }]}>
             <Text style={[styles.grandTotalLabel, { color: colors.text }]}>Total</Text>
-            <Text style={[styles.grandTotalValue, { color: colors.tint }]}>
+            <Text testID="cart-total" style={[styles.grandTotalValue, { color: colors.tint }]}>
               {formatPrice(cart.total, cart.currency_code)}
             </Text>
           </View>
         </View>
         <Button
+          testID="cart-checkout-button"
           title="Proceed to Checkout"
           onPress={() => router.push("/checkout")}
           loading={loading}

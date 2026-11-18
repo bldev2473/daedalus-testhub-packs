@@ -20,9 +20,11 @@ export const CartItem = React.memo(function CartItem({ item, currencyCode, onUpd
 
   const thumbnail = item.thumbnail || item.variant?.product?.thumbnail
   const total = item.subtotal || 0
+  // Appium이 줄을 찾는 이름: 상품 handle과 옵션 (예: t-shirt-M / Black)
+  const key = [item.product_handle, item.variant_title].filter(Boolean).join("-") || item.id
 
   return (
-    <View style={[styles.container, { borderBottomColor: colors.icon + "30" }]}>
+    <View testID={`cart-item-${key}`} style={[styles.container, { borderBottomColor: colors.icon + "30" }]}>
       <Image
         source={{ uri: thumbnail || "https://placehold.co/80" }}
         style={[styles.image, { backgroundColor: colors.imagePlaceholder }]}
@@ -38,29 +40,31 @@ export const CartItem = React.memo(function CartItem({ item, currencyCode, onUpd
               {item.variant_title}
             </Text>
           )}
-          <Text style={[styles.price, { color: colors.text }]}>
+          <Text testID={`cart-item-price-${key}`} style={[styles.price, { color: colors.text }]}>
             {formatPrice(total, currencyCode)}
           </Text>
         </View>
         <View style={styles.actions}>
           <View style={styles.quantityContainer}>
             <TouchableOpacity
+              testID={`cart-item-decrease-${key}`}
               style={[styles.quantityButton, { borderColor: colors.icon }]}
               onPress={() => onUpdateQuantity(Math.max(1, item.quantity - 1))}
             >
               <Text style={[styles.quantityButtonText, { color: colors.text }]}>-</Text>
             </TouchableOpacity>
-            <Text style={[styles.quantity, { color: colors.text }]}>
+            <Text testID={`cart-item-quantity-${key}`} style={[styles.quantity, { color: colors.text }]}>
               {item.quantity}
             </Text>
             <TouchableOpacity
+              testID={`cart-item-increase-${key}`}
               style={[styles.quantityButton, { borderColor: colors.icon }]}
               onPress={() => onUpdateQuantity(item.quantity + 1)}
             >
               <Text style={[styles.quantityButtonText, { color: colors.text }]}>+</Text>
             </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={onRemove} style={styles.removeButton}>
+          <TouchableOpacity testID={`cart-item-remove-${key}`} onPress={onRemove} style={styles.removeButton}>
             <IconSymbol size={20} name="trash" color={colors.text} />
           </TouchableOpacity>
         </View>

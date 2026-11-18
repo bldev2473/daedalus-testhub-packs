@@ -1,0 +1,58 @@
+name: store-app-apk
+
+# 안드로이드 실습의 상점 앱(playground-pack/mobile)을 APK로 만든다.
+# 손으로만 돈다 (workflow_dispatch). 공개 저장소의 표준 Linux 러너는 무료이고 무제한이다.
+# - Expo prebuild로 android 프로젝트를 만들고 Gradle로 release APK를 만든다. 서명은 prebuild가 만드는 debug 키를 쓴다 (스토어에 올리지 않는다)
+# - 에뮬레이터용 x86_64와 Apple 실리콘 에뮬레이터용 arm64-v8a를 한 APK에 넣는다
+# - 결과: APK와 sha256을 아티팩트 store-app-apk로 남긴다
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+        working-directory: playground-pack/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: playground-pack/mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc --noEmit
+      - name: android 프로젝트 만들기
+        run: npx expo prebuild --platform android --no-install
+      - name: APK 만들기
+        working-directory: playground-pack/mobile/android
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=x86_64,arm64-v8a --no-daemon --console=plain
+      - name: 이름 붙이고 체크섬 만들기
+        run: |
+          mkdir -p out
+          version=$(node -p "require('./package.json').version")
+          cp android/app/build/outputs/apk/release/app-release.apk "out/testhub-store-app-$version.apk"
+          (cd out && sha256sum "testhub-store-app-$version.apk" | tee "testhub-store-app-$version.apk.sha256")
+          ls -l out
+      - name: 패키지 이름 확인
+        run: |
+          aapt=$(ls "$ANDROID_HOME"/build-tools/*/aapt | tail -1)
+          "$aapt" dump badging out/*.apk | grep -E "^package:|native-code"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: store-app-apk
+          path: |
+            playground-pack/mobile/out/*.apk
+            playground-pack/mobile/out/*.apk.sha256
+          if-no-files-found: error
+          compression-level: 0

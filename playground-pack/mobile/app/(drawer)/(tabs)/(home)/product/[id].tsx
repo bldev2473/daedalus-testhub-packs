@@ -204,6 +204,7 @@ export default function ProductDetailsScreen() {
                     return (
                       <TouchableOpacity
                         key={optionValue.id}
+                        testID={`option-${option.title}-${optionValue.value}`}
                         style={[
                           styles.optionButton,
                           {
@@ -246,13 +247,15 @@ export default function ProductDetailsScreen() {
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Quantity</Text>
           <View style={styles.quantityControls}>
             <TouchableOpacity
+              testID="quantity-decrease"
               style={[styles.quantityButton, { borderColor: colors.icon }]}
               onPress={() => setQuantity(Math.max(1, quantity - 1))}
             >
               <Text style={[styles.quantityButtonText, { color: colors.text }]}>-</Text>
             </TouchableOpacity>
-            <Text style={[styles.quantity, { color: colors.text }]}>{quantity}</Text>
+            <Text testID="quantity-value" style={[styles.quantity, { color: colors.text }]}>{quantity}</Text>
             <TouchableOpacity
+              testID="quantity-increase"
               style={[styles.quantityButton, { borderColor: colors.icon }]}
               onPress={() => setQuantity(quantity + 1)}
             >
@@ -262,6 +265,7 @@ export default function ProductDetailsScreen() {
         </View>
 
         <Button
+          testID="add-to-cart-button"
           title={isInStock ? "Add to Cart" : "Out of Stock"}
           onPress={handleAddToCart}
           loading={addingToCart}
