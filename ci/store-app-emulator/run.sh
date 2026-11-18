@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 에뮬레이터가 켜진 뒤 android-emulator-runner가 부른다 (store-app-emulator-check 워크플로).
 # 웹 팩으로 상점 서버를 켜고, adb reverse로 에뮬레이터에서 닿게 하고, 상점 앱을 깔아 Appium 테스트를 돌린다.
-# 한 번은 결함 없이(통과해야 한다), 한 번은 F01을 켜고(실패해야 한다) 돌린다.
+# 결함 없이 한 번(통과해야 한다), 결함 F01, F02, F04를 하나씩 켜고 한 번씩(각각 기대한 이유로 실패해야 한다) 돌린다.
 set -euo pipefail
 
 WEB_PACK="${WEB_PACK:?WEB_PACK에 풀어 둔 웹 팩 폴더를 준다}"
@@ -67,10 +67,31 @@ SHOTS="$OUT/shots-f01" FAULT=F01 python -m pytest -v "$TEST" -k add_two 2>&1 | t
 FAULTY=${PIPESTATUS[0]}
 adb exec-out screencap -p >"$OUT/emulator-screen.png" 2>/dev/null
 
+# 결함마다: 그 결함을 켜고 해당 테스트를 돌려, 요소를 못 찾아서가 아니라 기대한 이유로 실패하는지 본다
+fault_phase() { # $1 결함 번호, $2 pytest -k, $3 실패 메시지에 있어야 할 글, $4 로그 이름
+  set -e
+  $STACK start "$1" >>"$OUT/stack-install.log" 2>&1 || { tail -30 "$OUT/stack-install.log"; exit 1; }
+  set +e
+  SHOTS="$OUT/shots-$4" python -m pytest -v "$TEST" -k "$2" 2>&1 | tee "$OUT/pytest-$4.log"
+  CODE=${PIPESTATUS[0]}
+  if grep -q "$3" "$OUT/pytest-$4.log"; then SEEN="예"; else SEEN="아니오"; fi
+}
+
+echo "== 3. F02(특정 옵션 담기 실패)를 켠다: 실패해야 한다"
+fault_phase F02 xl "XL을 담지 못했다" f02
+F02_CODE=$CODE; F02_SEEN=$SEEN
+echo "== 4. F04(저장되지 않는 담기)를 켠다: 실패해야 한다"
+fault_phase F04 stored "서버에 담긴 항목이 없다" f04
+F04_CODE=$CODE; F04_SEEN=$SEEN
+adb exec-out screencap -p >"$OUT/emulator-screen.png" 2>/dev/null
+
 # 다른 이유(요소를 못 찾음 등)로 실패한 것을 결함이 드러난 것으로 세지 않도록, 수량 비교에서 실패했는지 본다
 if grep -q "앱 화면의 수량이 2가 아니다: 1 " "$OUT/pytest-f01.log"; then SHOWN="예"; else SHOWN="아니오"; fi
 {
   echo "결함 없음: 종료 코드 $CLEAN (0이어야 한다)"
   echo "F01 켬:    종료 코드 $FAULTY (0이 아니어야 한다), 앱 화면의 수량이 1로 드러났는가: $SHOWN"
+  echo "F02 켬:    종료 코드 $F02_CODE (0이 아니어야 한다), 담기 실패 안내가 드러났는가: $F02_SEEN"
+  echo "F04 켬:    종료 코드 $F04_CODE (0이 아니어야 한다), 서버에 항목이 없음이 드러났는가: $F04_SEEN"
 } | tee "$OUT/result.txt"
-if [ "$CLEAN" -ne 0 ] || [ "$FAULTY" -eq 0 ] || [ "$SHOWN" != "예" ]; then exit 1; fi
+if [ "$CLEAN" -ne 0 ] || [ "$FAULTY" -eq 0 ] || [ "$SHOWN" != "예" ] \
+  || [ "$F02_CODE" -eq 0 ] || [ "$F02_SEEN" != "예" ] || [ "$F04_CODE" -eq 0 ] || [ "$F04_SEEN" != "예" ]; then exit 1; fi

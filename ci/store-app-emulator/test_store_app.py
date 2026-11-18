@@ -180,3 +180,54 @@ def test_cart_total_matches_api(driver):
     cart = api(f"/store/carts/{latest_cart_id()}?fields=item_subtotal,currency_code")["cart"]
     digits = "".join(ch for ch in shown if ch.isdigit() or ch == ".")
     assert float(digits) == pytest.approx(float(cart["item_subtotal"]), abs=0.01), (shown, cart)
+
+
+def test_failure_capture_calls_work_on_a_real_device(driver):
+    """testhub가 Appium 테스트의 실패 때 남기는 것(화면, 요소 트리, 실패 시점의 앱)을 실제 기기에서 읽을 수 있다.
+
+    testhub/fixtures/appium.py의 save_failure가 부르는 것과 같은 Appium 호출이다
+    """
+    settle(driver)
+    wait_for(driver, by_id("product-card-t-shirt"), "product-card", FIRST_SCREEN_TIMEOUT_S)
+    png = driver.get_screenshot_as_png()
+    tree = driver.page_source
+    assert png[:8] == b"\x89PNG\r\n\x1a\n" and len(png) > 10_000
+    assert "<hierarchy" in tree and "product-card-t-shirt" in tree
+    assert driver.current_package == APP and driver.current_activity
+    dump(driver, "capture")
+
+
+ADDED = "Product added to cart!"
+FAILED = "Failed to add product to cart"
+
+
+def toast_after_add(driver, size):
+    """상품 상세에서 옵션 크기를 고르고 담은 뒤 나온 안내 문구"""
+    settle(driver)
+    wait_for(driver, by_id("product-card-t-shirt"), "product-card", FIRST_SCREEN_TIMEOUT_S).click()
+    scroll_to(driver, f"option-Size-{size}").click()
+    scroll_to(driver, "add-to-cart-button").click()
+    shown = WebDriverWait(driver, TIMEOUT_S).until(
+        lambda d: next(
+            (t for t in (ADDED, FAILED) if d.find_elements(AppiumBy.ANDROID_UIAUTOMATOR, f'new UiSelector().text("{t}")')),
+            None,
+        )
+    )
+    dump(driver, f"toast-{size}")
+    return shown
+
+
+def test_xl_option_can_be_added(driver):
+    """XL을 담을 수 있다. F02(특정 옵션 담기 실패)를 켜면 앱에 담기 실패 안내가 뜬다"""
+    shown = toast_after_add(driver, "XL")
+    assert shown == ADDED, f"XL을 담지 못했다: 앱 안내 {shown!r}"
+
+
+def test_added_item_is_stored_on_the_server(driver):
+    """담은 항목이 서버에 남는다. F04(저장되지 않는 담기)를 켜면 앱은 담았다고 하지만 서버에는 없다"""
+    shown = toast_after_add(driver, "S")
+    assert shown == ADDED
+    cart_id = latest_cart_id()
+    api_items = api(f"/store/carts/{cart_id}?fields=*items")["cart"]["items"]
+    db_items = db_quantity(cart_id)
+    assert len(api_items) == 1 and db_items == [1], f"서버에 담긴 항목이 없다: API {len(api_items)}개, DB {db_items}"
