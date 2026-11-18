@@ -8,7 +8,6 @@ testhub 없이 Appium-Python-Client와 psycopg만 쓴다. 학습자가 하게 �
 
 import json
 import os
-import subprocess
 import time
 import urllib.request
 
@@ -45,8 +44,6 @@ def by_text(text):
 
 @pytest.fixture
 def driver():
-    # 이전 테스트가 남긴 장바구니와 지역 선택(AsyncStorage)을 지운다
-    subprocess.run(["adb", "shell", "pm", "clear", APP], check=False, capture_output=True)
     options = UiAutomator2Options()
     options.udid = DEVICE_UDID
     options.app_package = APP
@@ -56,6 +53,9 @@ def driver():
     options.new_command_timeout = 180
     d = webdriver.Remote(APPIUM_URL, options=options)
     os.makedirs(SHOTS, exist_ok=True)
+    # 이전 테스트가 남긴 장바구니와 지역 선택(AsyncStorage)을 지우고 앱을 다시 띄운다 (testhub 템플릿의 픽스처와 같다)
+    d.execute_script("mobile: clearApp", {"appId": APP})
+    d.activate_app(APP)
     yield d
     d.quit()
 
