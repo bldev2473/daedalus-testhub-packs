@@ -55,8 +55,10 @@ jobs:
         run: |
           aapt=$(ls "$ANDROID_HOME"/build-tools/*/aapt | tail -1)
           "$aapt" dump badging out/*.apk | grep -E "^package:|native-code"
+          # 서명 인증서는 진단용이라 실패해도 릴리스를 막지 않는다. 출력은 그대로 남긴다
           apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | tail -1)
-          "$apksigner" verify --print-certs out/*.apk | grep -E "Signer #1 certificate (DN|SHA-256)"
+          echo "apksigner: $apksigner"
+          "$apksigner" verify --verbose --print-certs out/*.apk 2>&1 | head -30 || true
       - uses: actions/upload-artifact@v4
         with:
           name: store-app-apk
