@@ -604,12 +604,16 @@ describe("만든 팩", { skip: !existsSync(archive) && `팩이 없다 (먼저 no
     const expect = (on) => Object.fromEntries(FAULTS.map((f) => [f.id, on.includes(f.id)]))
     await up("")
     assert.deepEqual(await symptoms(), expect([]), "결함을 켜지 않으면 증상이 없다")
+    // 상점 앱(모바일)이 시작할 때 읽는 결함 목록. 앱 화면에도 있는 결함(F03, F06, F07)만 켠 것이 나온다
+    assert.deepEqual((await api("GET", "/store/testhub/app-config")).data, { faults: [] }, "결함을 켜지 않으면 앱 결함 목록이 비어 있다")
     await down()
     for (const group of [["F01", "F02", "F05", "F08"], ["F04"], ["F03", "F06", "F07"]]) {
       db("reset", String(pgPort))
       await up(group.join(","))
       const screen = !group.includes("F04")
       const seen = await symptoms(screen)
+      const appFaults = group.filter((f) => ["F03", "F06", "F07"].includes(f))
+      assert.deepEqual((await api("GET", "/store/testhub/app-config")).data, { faults: appFaults }, `앱 결함 목록(${group.join(",")})`)
       const want = expect(group)
       if (!screen) for (const id of ["F03", "F06", "F07", "F08"]) delete want[id], delete seen[id]
       assert.deepEqual(seen, want, `켠 결함(${group.join(",")})만 증상이 나온다`)

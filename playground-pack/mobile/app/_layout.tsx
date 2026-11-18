@@ -1,4 +1,5 @@
 import { CartProvider } from "@/context/cart-context"
+import { FaultsProvider } from "@/lib/faults"
 import { useColorScheme } from "@/hooks/use-color-scheme"
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native"
 import { Stack } from "expo-router"
@@ -14,6 +15,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
         <RegionProvider>
+          <FaultsProvider>
           <CartProvider>
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
@@ -39,6 +41,7 @@ export default function RootLayout() {
             </Stack>
             <StatusBar style="auto" />
           </CartProvider>
+          </FaultsProvider>
         </RegionProvider>
       </ThemeProvider>
     </GestureHandlerRootView>

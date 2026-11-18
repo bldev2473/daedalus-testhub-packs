@@ -3,16 +3,19 @@ import { ProductCard } from "@/components/product-card"
 import { Colors } from "@/constants/theme"
 import { useRegion } from "@/context/region-context"
 import { useColorScheme } from "@/hooks/use-color-scheme"
+import { useFaults } from "@/lib/faults"
 import { sdk } from "@/lib/sdk"
 import type { HttpTypes } from "@medusajs/types"
 import { Image } from "expo-image"
-import React, { useCallback, useEffect, useState } from "react"
-import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native"
+import React, { useCallback, useEffect, useMemo, useState } from "react"
+import { FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 
 export default function HomeScreen() {
   const colorScheme = useColorScheme()
   const colors = Colors[colorScheme ?? "light"]
   const { selectedRegion } = useRegion()
+  const faults = useFaults()
+  const [sortAsc, setSortAsc] = useState(false)
   
   const [products, setProducts] = useState<HttpTypes.StoreProduct[]>([])
   const [loading, setLoading] = useState(true)
@@ -50,6 +53,15 @@ export default function HomeScreen() {
     fetchProducts()
   }
 
+  const shown = useMemo(() => {
+    if (!sortAsc) return products
+    // 상품 카드가 보여 주는 값(첫 variant의 가격)으로 낮은 가격순으로 정렬한다
+    const price = (p: HttpTypes.StoreProduct) => p.variants?.[0]?.calculated_price?.calculated_amount ?? Infinity
+    const sorted = [...products].sort((a, b) => price(a) - price(b))
+    // testhub 결함 F07: 낮은 가격순으로 정렬하면 가장 싼 상품이 맨 뒤에 온다
+    return faults.has("F07") && sorted.length > 1 ? [...sorted.slice(1), sorted[0]] : sorted
+  }, [products, sortAsc, faults])
+
   if (loading) {
     return <Loading message="Loading products..." />
   }
@@ -65,7 +77,7 @@ export default function HomeScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <FlatList
-        data={products}
+        data={shown}
         keyExtractor={(item) => item.id}
         numColumns={2}
         columnWrapperStyle={styles.row}
@@ -83,6 +95,13 @@ export default function HomeScreen() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>
               Latest Products
             </Text>
+            <TouchableOpacity
+              testID="sort-price-asc"
+              onPress={() => setSortAsc((v) => !v)}
+              style={[styles.sortButton, { borderColor: colors.icon }]}
+            >
+              <Text style={{ color: colors.text }}>{sortAsc ? "Sorted: price low to high" : "Sort: price low to high"}</Text>
+            </TouchableOpacity>
           </View>
         }
         renderItem={({ item }) => <ProductCard product={item} />}
@@ -122,6 +141,15 @@ const styles = StyleSheet.create({
   banner: {
     width: "100%",
     height: 200,
+  },
+  sortButton: {
+    alignSelf: "flex-start",
+    marginHorizontal: 16,
+    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderRadius: 8,
   },
   sectionTitle: {
     fontSize: 24,

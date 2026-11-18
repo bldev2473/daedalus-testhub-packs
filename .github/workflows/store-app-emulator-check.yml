@@ -47,7 +47,14 @@ jobs:
       - run: npx expo prebuild --platform android --no-install
       - name: APK 만들기
         working-directory: playground-pack/mobile/android
-        run: ./gradlew assembleRelease -PreactNativeArchitectures=x86_64,arm64-v8a --no-daemon --console=plain
+        # Maven Central이 429(Too Many Requests)를 돌려주는 때가 있어 세 번까지 다시 한다
+        run: |
+          for attempt in 1 2 3; do
+            ./gradlew assembleRelease -PreactNativeArchitectures=x86_64,arm64-v8a --no-daemon --console=plain && exit 0
+            echo "빌드 실패 ($attempt번째). 잠시 뒤 다시 한다"
+            sleep $((attempt * 30))
+          done
+          exit 1
       - name: 이름 붙이기
         run: |
           mkdir -p out

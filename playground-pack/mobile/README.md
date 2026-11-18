@@ -15,6 +15,7 @@ testhub의 웹 실습 환경(Medusa 2.18.0)에 붙는 모바일 상점 앱입니
 - Appium이 요소를 찾도록 `testID`를 달았습니다 (아래 "Appium이 찾는 이름"). 안드로이드에서 `testID`는 `resource-id`가 됩니다
 - `lib/sdk.ts`의 기본 publishable key를 testhub 실습 환경의 고정 키로 했습니다 (`src/testhub/playground/components.py`의 `FIXED_PUBLISHABLE_KEY`와 같아야 하고, 테스트가 확인합니다). 다른 Medusa에 붙일 때는 `EXPO_PUBLIC_MEDUSA_PUBLISHABLE_API_KEY`로 바꿉니다
 - `app.json`에 안드로이드 패키지 이름(`com.testhub.shop`)을 정했습니다
+- **앱 결함(F03, F06, F07):** 시작할 때 Medusa의 `/store/testhub/app-config`에서 켜진 결함 번호를 읽어(`lib/faults.tsx`) 앱 화면에서 냅니다. 이 주소가 없는 Medusa에 붙이면 결함이 없습니다. F03은 장바구니 화면의 소계와 합계가 상품이 2줄 이상일 때 마지막 줄을 빼고 계산되고, F06은 하단 탭 배지가 수량 합이 아니라 상품 줄 수로 보이고, F07은 홈의 "낮은 가격순"으로 정렬하면 가장 싼 상품이 맨 뒤에 옵니다 (웹 상점의 같은 번호의 결함과 같은 증상입니다). 홈에 낮은 가격순 정렬 단추(`sort-price-asc`)를 더했습니다
 - 하단 탭 장바구니 배지를 담은 수량의 합으로 했습니다. 안내서의 원래 코드는 상품 줄 수였는데, 웹 상점의 결함 없는 머리글(수량 합)과 달라 결함이 없는 환경에서도 학습자가 결함으로 오해할 수 있습니다
 - release APK는 기본으로 http 통신을 막으므로 `expo-build-properties`로 `usesCleartextTraffic`을 켰습니다 (앱이 `http://localhost:9000`에 붙습니다)
 
@@ -35,8 +36,9 @@ testhub의 웹 실습 환경(Medusa 2.18.0)에 붙는 모바일 상점 앱입니
 
 | 화면 | `testID` |
 | --- | --- |
-| 하단 탭 | `tab-home`, `tab-cart` |
-| 상품 카드 | `product-card-<상품 handle>` (예: `product-card-t-shirt`) |
+| 하단 탭 | `tab-home`, `tab-cart` (장바구니 탭의 `content-desc`가 `<배지 개수>, Cart` 꼴이라 배지 개수를 읽을 수 있습니다) |
+| 상품 카드 | `product-card-<상품 handle>` (예: `product-card-t-shirt`), 그 안의 가격 `product-price-<상품 handle>` |
+| 홈 | `sort-price-asc` (낮은 가격순 정렬 단추) |
 | 상품 상세 | `option-<옵션 이름>-<값>` (예: `option-Size-M`), `quantity-decrease`, `quantity-increase`, `quantity-value`, `add-to-cart-button` |
 | 장바구니 | `cart-empty`, `cart-subtotal`, `cart-total`, `cart-checkout-button` |
 | 장바구니 줄 | `cart-item-<상품 handle>-<옵션>`, 그 안의 `cart-item-price-…`, `cart-item-quantity-…`, `cart-item-increase-…`, `cart-item-decrease-…`, `cart-item-remove-…` (옵션 예: `M / Black`) |

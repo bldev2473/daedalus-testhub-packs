@@ -50,7 +50,7 @@ export const ProductCard = React.memo(function ProductCard({ product }: ProductC
           {product.title}
         </Text>
         <View style={styles.priceRow}>
-          <Text style={[styles.price, { color: colors.tint }]}>
+          <Text testID={`product-price-${product.handle}`} style={[styles.price, { color: colors.tint }]}>
             {formatPrice(priceAmount, currencyCode)}
           </Text>
         </View>

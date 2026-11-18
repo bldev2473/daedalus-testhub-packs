@@ -3,6 +3,7 @@ import { Loading } from "@/components/loading"
 import { Button } from "@/components/ui/button"
 import { Colors } from "@/constants/theme"
 import { useCart } from "@/context/cart-context"
+import { useFaults } from "@/lib/faults"
 import { useColorScheme } from "@/hooks/use-color-scheme"
 import { formatPrice } from "@/lib/format-price"
 import { useRouter } from "expo-router"
@@ -14,8 +15,12 @@ export default function CartScreen() {
   const colors = Colors[colorScheme ?? "light"]
   const router = useRouter()
   const { cart, updateItemQuantity, removeItem, loading } = useCart()
+  const faults = useFaults()
 
   const isEmpty = !cart?.items || cart.items.length === 0
+  // testhub 결함 F03: 화면의 합계가 상품이 2줄 이상일 때 마지막 줄을 빼고 계산된다 (API의 합계는 정상)
+  const items = cart?.items ?? []
+  const lost = faults.has("F03") && items.length >= 2 ? Number(items[items.length - 1].subtotal ?? 0) : 0
 
   if (loading && !cart) {
     return <Loading message="Loading cart..." />
@@ -58,7 +63,7 @@ export default function CartScreen() {
           <View style={styles.totalRow}>
             <Text style={[styles.totalLabel, { color: colors.text }]}>Subtotal</Text>
             <Text testID="cart-subtotal" style={[styles.totalValue, { color: colors.text }]}>
-              {formatPrice(cart.item_subtotal, cart.currency_code)}
+              {formatPrice((cart.item_subtotal ?? 0) - lost, cart.currency_code)}
             </Text>
           </View>
           {cart.tax_total !== undefined && cart.tax_total > 0 && (
@@ -80,7 +85,7 @@ export default function CartScreen() {
           <View style={[styles.totalRow, styles.grandTotalRow, { borderTopColor: colors.border }]}>
             <Text style={[styles.grandTotalLabel, { color: colors.text }]}>Total</Text>
             <Text testID="cart-total" style={[styles.grandTotalValue, { color: colors.tint }]}>
-              {formatPrice(cart.total, cart.currency_code)}
+              {formatPrice((cart.total ?? 0) - lost, cart.currency_code)}
             </Text>
           </View>
         </View>

@@ -1,4 +1,5 @@
 import { useCart } from "@/context/cart-context"
+import { useFaults } from "@/lib/faults"
 import { useColorScheme } from "@/hooks/use-color-scheme"
 import { Tabs } from "expo-router"
 import React from "react"
@@ -10,9 +11,13 @@ import { Colors } from "@/constants/theme"
 export default function TabLayout() {
   const colorScheme = useColorScheme()
   const { cart } = useCart()
+  const faults = useFaults()
 
   // 하단 탭의 장바구니 배지는 담은 수량의 합이다 (웹 상점의 결함 없는 머리글과 같다. 줄 수가 아니다)
-  const itemCount = cart?.items?.reduce((sum, item) => sum + item.quantity, 0) || 0
+  // testhub 결함 F06: 배지가 수량의 합이 아니라 상품 줄 수로 보인다
+  const itemCount = faults.has("F06")
+    ? cart?.items?.length || 0
+    : cart?.items?.reduce((sum, item) => sum + item.quantity, 0) || 0
 
   return (
     <Tabs

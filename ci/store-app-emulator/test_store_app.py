@@ -162,11 +162,7 @@ def test_add_two_items_and_compare_app_api_and_db(driver):
     assert api_quantity == [2]
     assert db_quantities == [2]
     # 하단 탭의 장바구니 배지는 줄 수(1)가 아니라 담은 수량의 합(2)이다
-    badge = driver.find_element(
-        AppiumBy.ANDROID_UIAUTOMATOR,
-        'new UiSelector().resourceId("tab-cart").childSelector(new UiSelector().text("2"))',
-    )
-    assert badge.text == "2"
+    assert badge_count(driver) == 2, f"탭 배지가 담은 수량(2)이 아니다: {badge_count(driver)}"
 
 
 def test_cart_total_matches_api(driver):
@@ -231,3 +227,52 @@ def test_added_item_is_stored_on_the_server(driver):
     api_items = api(f"/store/carts/{cart_id}?fields=*items")["cart"]["items"]
     db_items = db_quantity(cart_id)
     assert len(api_items) == 1 and db_items == [1], f"서버에 담긴 항목이 없다: API {len(api_items)}개, DB {db_items}"
+
+
+def badge_count(driver):
+    """하단 탭의 장바구니 배지 개수. 탭의 content-desc가 "<배지 개수>, Cart" 꼴이다 (배지가 없으면 "Cart")"""
+    description = driver.find_element(*by_id("tab-cart")).get_attribute("content-desc") or ""
+    head = description.split(",")[0].strip()
+    return int(head) if head.isdigit() else 0
+
+
+def test_cart_badge_counts_quantities(driver):
+    """티셔츠를 수량 2로 담으면 탭 배지는 2다. 결함 F06을 켜면 배지가 상품 줄 수(1)로 보인다"""
+    settle(driver)
+    wait_for(driver, by_id("product-card-t-shirt"), "product-card", FIRST_SCREEN_TIMEOUT_S).click()
+    scroll_to(driver, "quantity-increase").click()
+    scroll_to(driver, "add-to-cart-button").click()
+    wait_for(driver, by_text("Product added to cart!"), "toast")
+    badge = badge_count(driver)
+    dump(driver, "badge")
+    assert badge == 2, f"탭 배지가 담은 수량(2)이 아니다: {badge}"
+
+
+def test_cart_subtotal_counts_every_line(driver):
+    """티셔츠 2개와 반바지 1개를 담으면 화면의 소계가 API의 소계와 같다. 결함 F03을 켜면 마지막 줄이 빠진다"""
+    settle(driver)
+    wait_for(driver, by_id("product-card-t-shirt"), "product-card", FIRST_SCREEN_TIMEOUT_S).click()
+    scroll_to(driver, "quantity-increase").click()
+    scroll_to(driver, "add-to-cart-button").click()
+    wait_for(driver, by_text("Product added to cart!"), "toast")
+    driver.find_element(*by_id("tab-home")).click()
+    wait_for(driver, by_id("product-card-shorts"), "product-card-shorts").click()
+    scroll_to(driver, "add-to-cart-button").click()
+    wait_for(driver, by_text("Product added to cart!"), "toast2")
+    driver.find_element(*by_id("tab-cart")).click()
+    shown = wait_for(driver, by_id("cart-subtotal"), "cart-subtotal").text
+    dump(driver, "subtotal")
+    subtotal = float(api(f"/store/carts/{latest_cart_id()}?fields=item_subtotal")["cart"]["item_subtotal"])
+    digits = "".join(ch for ch in shown if ch.isdigit() or ch == ".")
+    assert float(digits) == pytest.approx(subtotal, abs=0.01), f"화면의 소계가 API와 다르다: {shown} (API {subtotal})"
+
+
+def test_price_sort_puts_the_cheapest_first(driver):
+    """낮은 가격순이면 첫 상품이 가장 싸다 (티셔츠 10유로). 결함 F07은 가장 싼 상품을 맨 뒤로 보낸다"""
+    settle(driver)
+    wait_for(driver, by_id("product-card-t-shirt"), "product-card", FIRST_SCREEN_TIMEOUT_S)
+    wait_for(driver, by_id("sort-price-asc"), "sort").click()
+    first = wait_for(driver, by_id_pattern("product-price-.*"), "price").text
+    dump(driver, "sorted")
+    price = float("".join(ch for ch in first if ch.isdigit() or ch == "."))
+    assert price == 10, f"맨 앞 상품이 가장 싸지 않다: {first}"

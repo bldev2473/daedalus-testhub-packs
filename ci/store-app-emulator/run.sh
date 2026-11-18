@@ -86,10 +86,19 @@ F02_CODE=$CODE; F02_SEEN=$SEEN
 echo "== 4. F04(저장되지 않는 담기)를 켠다: 실패해야 한다"
 fault_phase F04 stored "서버에 담긴 항목이 없다" f04
 F04_CODE=$CODE; F04_SEEN=$SEEN
+echo "== 4-1. 앱 F03(화면의 합계 계산 오류)을 켠다: 실패해야 한다"
+fault_phase F03 subtotal "화면의 소계가 API와 다르다" f03-app
+F03A_CODE=$CODE; F03A_SEEN=$SEEN
+echo "== 4-2. 앱 F06(배지 개수 표시)을 켠다: 실패해야 한다"
+fault_phase F06 badge "탭 배지가 담은 수량" f06-app
+F06A_CODE=$CODE; F06A_SEEN=$SEEN
+echo "== 4-3. 앱 F07(가격 정렬 오류)을 켠다: 실패해야 한다"
+fault_phase F07 sort "맨 앞 상품이 가장 싸지 않다" f07-app
+F07A_CODE=$CODE; F07A_SEEN=$SEEN
 adb exec-out screencap -p >"$OUT/emulator-screen.png" 2>/dev/null
 
 # 모바일 웹: 휴대폰 Chrome으로 웹 상점을 연다. 웹 상점에만 있는 결함(F03, F06, F07)을 찾는다
-# MOBILE_WEB_REQUIRED=1이면 이 단계의 실패도 실행의 실패다 (아직 시험 중이라 기본은 결과만 남긴다)
+# MOBILE_WEB_REQUIRED=0으로 두면 이 단계의 실패는 실행의 실패로 세지 않는다 (결과만 남긴다)
 MW_TEST=ci/store-app-emulator/test_mobile_web.py
 web_phase() { # $1 결함 번호(없으면 빈 값), $2 pytest -k, $3 실패 메시지에 있어야 할 글, $4 이름
   $STACK storefront "$1" >>"$OUT/stack-install.log" 2>&1 || { tail -30 "$OUT/stack-install.log"; CODE=99; SEEN="아니오"; return; }
@@ -119,11 +128,16 @@ if grep -q "앱 화면의 수량이 2가 아니다: 1 " "$OUT/pytest-f01.log"; t
   echo "F01 켬:    종료 코드 $FAULTY (0이 아니어야 한다), 앱 화면의 수량이 1로 드러났는가: $SHOWN"
   echo "F02 켬:    종료 코드 $F02_CODE (0이 아니어야 한다), 담기 실패 안내가 드러났는가: $F02_SEEN"
   echo "F04 켬:    종료 코드 $F04_CODE (0이 아니어야 한다), 서버에 항목이 없음이 드러났는가: $F04_SEEN"
+  echo "앱 F03 켬:    종료 코드 $F03A_CODE (0이 아니어야 한다), 화면의 소계 오류가 드러났는가: $F03A_SEEN"
+  echo "앱 F06 켬:    종료 코드 $F06A_CODE (0이 아니어야 한다), 배지 오류가 드러났는가: $F06A_SEEN"
+  echo "앱 F07 켬:    종료 코드 $F07A_CODE (0이 아니어야 한다), 정렬 오류가 드러났는가: $F07A_SEEN"
   echo "모바일 웹 결함 없음: 종료 코드 $MW_CLEAN (0이어야 한다)"
   echo "모바일 웹 F03 켬:   종료 코드 $MW_F03 (0이 아니어야 한다), 소계 오류가 드러났는가: $MW_F03_SEEN"
   echo "모바일 웹 F06 켬:   종료 코드 $MW_F06 (0이 아니어야 한다), 개수 오류가 드러났는가: $MW_F06_SEEN"
   echo "모바일 웹 F07 켬:   종료 코드 $MW_F07 (0이 아니어야 한다), 정렬 오류가 드러났는가: $MW_F07_SEEN"
 } | tee "$OUT/result.txt"
-if [ "${MOBILE_WEB_REQUIRED:-0}" = "1" ] && { [ "$MW_CLEAN" -ne 0 ] || [ "$MW_F03_SEEN" != "예" ] || [ "$MW_F06_SEEN" != "예" ] || [ "$MW_F07_SEEN" != "예" ]; }; then exit 1; fi
+if [ "${MOBILE_WEB_REQUIRED:-1}" = "1" ] && { [ "$MW_CLEAN" -ne 0 ] || [ "$MW_F03_SEEN" != "예" ] || [ "$MW_F06_SEEN" != "예" ] || [ "$MW_F07_SEEN" != "예" ]; }; then exit 1; fi
 if [ "$CLEAN" -ne 0 ] || [ "$FAULTY" -eq 0 ] || [ "$SHOWN" != "예" ] \
-  || [ "$F02_CODE" -eq 0 ] || [ "$F02_SEEN" != "예" ] || [ "$F04_CODE" -eq 0 ] || [ "$F04_SEEN" != "예" ]; then exit 1; fi
+  || [ "$F02_CODE" -eq 0 ] || [ "$F02_SEEN" != "예" ] || [ "$F04_CODE" -eq 0 ] || [ "$F04_SEEN" != "예" ] \
+  || [ "$F03A_CODE" -eq 0 ] || [ "$F03A_SEEN" != "예" ] || [ "$F06A_CODE" -eq 0 ] || [ "$F06A_SEEN" != "예" ] \
+  || [ "$F07A_CODE" -eq 0 ] || [ "$F07A_SEEN" != "예" ]; then exit 1; fi

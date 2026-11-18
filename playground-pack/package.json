@@ -1,6 +1,6 @@
 {
   "name": "testhub-web-pack",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "testhub 실습 환경의 웹 실습 팩 (Medusa 2.18.0, 상점, PostgreSQL)을 만든다",
   "license": "Apache-2.0",
