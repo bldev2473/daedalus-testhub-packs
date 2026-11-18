@@ -1,0 +1,65 @@
+name: appium-emulator-check
+
+# 공개한 Appium 팩이 실제 안드로이드 에뮬레이터(KVM 가속)에서 세션을 만들고 설정 앱 테스트를 통과하는지 본다.
+# 손으로만 돈다 (workflow_dispatch). 공개 저장소의 표준 Linux 러너는 무료이고 무제한이다.
+# - Android SDK 라이선스는 reactivecircus/android-emulator-runner가 러너의 SDK에서 수락한다 (이 실행에서만)
+# - 결과: 로그, 에뮬레이터 화면(스크린샷), pytest 결과를 아티팩트 appium-emulator-check로 남긴다
+# - testhub 소스는 쓰지 않는다. 팩과 Appium-Python-Client만으로 본다
+on:
+  workflow_dispatch:
+    inputs:
+      api-level:
+        description: "안드로이드 API 레벨 (실습 환경은 34)"
+        default: "34"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest "Appium-Python-Client>=4"
+      - name: KVM 권한 열기
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+      - name: 공개한 Appium 팩 받기
+        run: |
+          version=$(node -p "require('./playground-pack/appium/package.json').version")
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/pack-appium-v${version}"
+          file="testhub-appium-pack-${version}.tar.gz"
+          curl -fsSL -O "$base/$file" -O "$base/$file.sha256"
+          sha256sum -c "$file.sha256"
+          mkdir -p "$RUNNER_TEMP/appium-pack"
+          tar -xzf "$file" -C "$RUNNER_TEMP/appium-pack"
+          echo "APPIUM_PACK=$RUNNER_TEMP/appium-pack" >> "$GITHUB_ENV"
+      - name: 에뮬레이터를 켜고 설정 앱 테스트 돌리기
+        # 제3자 액션이라 움직이는 태그(v2) 대신 v2.38.0 커밋에 고정한다
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: ${{ inputs.api-level }}
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disk-size: 2048M
+          ram-size: 2048M
+          force-avd-creation: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -no-metrics
+          script: bash ci/appium-emulator/run.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: appium-emulator-check
+          path: out/
+          if-no-files-found: warn
