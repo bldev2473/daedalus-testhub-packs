@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # 웹 실습 팩으로 상점 서버(PostgreSQL, Medusa)를 켜고 끈다. testhub 관리자가 하는 일을 팩의 스크립트로 직접 한다.
-# 쓰는 법: bash stack.sh install | start [결함 번호,...] | stop
+# 쓰는 법: bash stack.sh install | start [결함 번호,...] | storefront [결함 번호,...] | stop
 # 필요한 환경 변수: WEB_PACK(풀어 둔 웹 팩, PostgreSQL 패키지를 넣은 것), STACK_DIR(데이터와 로그를 둘 폴더)
 # 서버는 이 스크립트가 끝난 뒤에도 남는다 (백그라운드로 두고, 출력은 STACK_DIR/logs로 보낸다)
 set -euo pipefail
 
 PG_PORT="${PG_PORT:-55432}"
 MEDUSA_PORT="${MEDUSA_PORT:-9000}"
+STORE_PORT="${STORE_PORT:-8000}"
 # 이 값은 src/testhub/playground/components.py의 FIXED_PUBLISHABLE_KEY와 같다
 FIXED_KEY="pk_00000000testhub0000000000000000000000000000000000000000000000000"
 
@@ -66,7 +67,37 @@ stack_stop_medusa() {
   fi
 }
 
+# 웹 상점(Next.js). 켤 때 읽는 결함(F03, F06, F07)은 다시 켜야 바뀐다. 프로세스 이름이 바뀌므로 PID 파일로 끈다
+stack_storefront() {
+  stack_stop_storefront
+  (
+    export PORT="$STORE_PORT" HOSTNAME=localhost MEDUSA_BACKEND_URL="http://localhost:$MEDUSA_PORT"
+    export MEDUSA_PUBLISHABLE_KEY="$FIXED_KEY" DEFAULT_REGION=dk NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
+    if [ -n "${1:-}" ]; then export TESTHUB_FAULTS="$1"; fi
+    cd "$WEB_PACK/storefront"
+    nohup node server.js >"$STACK_DIR/logs/storefront-${1:-none}.log" 2>&1 &
+    echo $! >"$STACK_DIR/storefront.pid"
+  )
+  for _ in $(seq 1 120); do
+    curl -fsS "http://localhost:$STORE_PORT/dk" >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  echo "상점이 켜지지 않았다"; tail -30 "$STACK_DIR/logs/storefront-${1:-none}.log"; return 1
+}
+
+stack_stop_storefront() {
+  if [ -f "$STACK_DIR/storefront.pid" ]; then
+    kill "$(cat "$STACK_DIR/storefront.pid")" 2>/dev/null || true
+    for _ in $(seq 1 30); do
+      curl -fsS "http://localhost:$STORE_PORT/dk" >/dev/null 2>&1 || break
+      sleep 1
+    done
+    rm -f "$STACK_DIR/storefront.pid"
+  fi
+}
+
 stack_stop() {
+  stack_stop_storefront
   stack_stop_medusa
   node "$WEB_PACK/bin/db.mjs" stop "$STACK_DIR/pg" >/dev/null 2>&1 || true
 }
@@ -74,6 +105,7 @@ stack_stop() {
 case "${1:-}" in
   install) stack_install ;;
   start) stack_start "${2:-}" ;;
+  storefront) stack_storefront "${2:-}" ;;
   stop) stack_stop ;;
   *) echo "사용법: stack.sh install | start [결함] | stop"; exit 2 ;;
 esac
