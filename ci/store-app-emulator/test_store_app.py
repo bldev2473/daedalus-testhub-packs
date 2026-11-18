@@ -9,6 +9,7 @@ testhub 없이 Appium-Python-Client와 psycopg만 쓴다. 학습자가 하게 �
 import json
 import os
 import subprocess
+import time
 import urllib.request
 
 import psycopg
@@ -96,10 +97,13 @@ def scroll_to(driver, test_id):
         f'.setMaxSearchSwipes(10).scrollIntoView(new UiSelector().resourceId("{test_id}"))'
     )
     try:
-        return driver.find_element(AppiumBy.ANDROID_UIAUTOMATOR, selector)
+        driver.find_element(AppiumBy.ANDROID_UIAUTOMATOR, selector)
     except NoSuchElementException:
         dump(driver, f"9-not-found-{test_id}")
         raise
+    # 내려간 직후에는 화면이 아직 미끄러지고 있어 찾은 요소의 좌표로 누르면 빗나간다. 멈춘 뒤 다시 찾아 쓴다
+    time.sleep(1.5)
+    return driver.find_element(*by_id(test_id))
 
 
 def api(path):
