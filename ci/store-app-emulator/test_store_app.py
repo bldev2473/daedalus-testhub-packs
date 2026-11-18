@@ -26,7 +26,8 @@ SHOTS = os.environ.get("SHOTS", "shots")
 MEDUSA_URL = f"http://localhost:{os.environ.get('MEDUSA_PORT', '9000')}"
 PG_PORT = int(os.environ.get("PG_PORT", "55432"))
 KEY = os.environ["FIXED_KEY"]
-TIMEOUT_S = 90
+TIMEOUT_S = 30
+FIRST_SCREEN_TIMEOUT_S = 90  # 앱을 처음 띄울 때는 번들을 읽고 서버에서 상품을 받는다
 
 
 def by_id(test_id):
@@ -79,11 +80,25 @@ def settle(driver):
             return
 
 
-def wait_for(driver, locator, name):
+def wait_for(driver, locator, name, timeout=TIMEOUT_S):
     try:
-        return WebDriverWait(driver, TIMEOUT_S).until(lambda d: d.find_element(*locator))
+        return WebDriverWait(driver, timeout).until(lambda d: d.find_element(*locator))
     except TimeoutException:
         dump(driver, f"9-not-found-{name}")
+        raise
+
+
+def scroll_to(driver, test_id):
+    """화면 아래에 있는 요소로 내려가서 찾는다. 안드로이드는 화면 밖 요소를 요소 트리에 넣지 않는다.
+    세로 ScrollView만 쓴다 (상품 이미지 슬라이더는 가로 HorizontalScrollView다)"""
+    selector = (
+        'new UiScrollable(new UiSelector().className("android.widget.ScrollView"))'
+        f'.setMaxSearchSwipes(10).scrollIntoView(new UiSelector().resourceId("{test_id}"))'
+    )
+    try:
+        return driver.find_element(AppiumBy.ANDROID_UIAUTOMATOR, selector)
+    except NoSuchElementException:
+        dump(driver, f"9-not-found-{test_id}")
         raise
 
 
@@ -111,19 +126,19 @@ def test_app_reaches_the_store(driver):
     """앱이 고정 키로 localhost:9000(adb reverse)의 상점에 붙어 상품 카드를 그린다"""
     dump(driver, "0-after-session")
     settle(driver)
-    wait_for(driver, by_id("product-card-t-shirt"), "product-card")
+    wait_for(driver, by_id("product-card-t-shirt"), "product-card", FIRST_SCREEN_TIMEOUT_S)
     dump(driver, "1-home")
 
 
 def test_add_two_items_and_compare_app_api_and_db(driver):
     settle(driver)
-    wait_for(driver, by_id("product-card-t-shirt"), "product-card").click()
+    wait_for(driver, by_id("product-card-t-shirt"), "product-card", FIRST_SCREEN_TIMEOUT_S).click()
 
-    wait_for(driver, by_id("quantity-increase"), "quantity-increase").click()
+    scroll_to(driver, "quantity-increase").click()
     assert driver.find_element(*by_id("quantity-value")).text == "2"
     dump(driver, "2-detail-quantity-2")
 
-    driver.find_element(*by_id("add-to-cart-button")).click()
+    scroll_to(driver, "add-to-cart-button").click()
     wait_for(driver, by_text("Product added to cart!"), "toast")
 
     driver.find_element(*by_id("tab-cart")).click()
@@ -147,8 +162,8 @@ def test_add_two_items_and_compare_app_api_and_db(driver):
 def test_cart_total_matches_api(driver):
     """앱 장바구니 화면의 소계가 API의 item_subtotal(소수 둘째 자리)과 같다"""
     settle(driver)
-    wait_for(driver, by_id("product-card-t-shirt"), "product-card").click()
-    wait_for(driver, by_id("add-to-cart-button"), "add").click()
+    wait_for(driver, by_id("product-card-t-shirt"), "product-card", FIRST_SCREEN_TIMEOUT_S).click()
+    scroll_to(driver, "add-to-cart-button").click()
     wait_for(driver, by_text("Product added to cart!"), "toast")
     driver.find_element(*by_id("tab-cart")).click()
     shown = wait_for(driver, by_id("cart-subtotal"), "cart-subtotal").text

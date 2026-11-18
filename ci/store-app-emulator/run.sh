@@ -67,8 +67,10 @@ SHOTS="$OUT/shots-f01" FAULT=F01 python -m pytest -v "$TEST" -k add_two 2>&1 | t
 FAULTY=${PIPESTATUS[0]}
 adb exec-out screencap -p >"$OUT/emulator-screen.png" 2>/dev/null
 
+# 다른 이유(요소를 못 찾음 등)로 실패한 것을 결함이 드러난 것으로 세지 않도록, 수량 비교에서 실패했는지 본다
+if grep -q "앱 화면의 수량이 2가 아니다: 1 " "$OUT/pytest-f01.log"; then SHOWN="예"; else SHOWN="아니오"; fi
 {
   echo "결함 없음: 종료 코드 $CLEAN (0이어야 한다)"
-  echo "F01 켬:    종료 코드 $FAULTY (0이 아니어야 한다)"
+  echo "F01 켬:    종료 코드 $FAULTY (0이 아니어야 한다), 앱 화면의 수량이 1로 드러났는가: $SHOWN"
 } | tee "$OUT/result.txt"
-if [ "$CLEAN" -ne 0 ] || [ "$FAULTY" -eq 0 ]; then exit 1; fi
+if [ "$CLEAN" -ne 0 ] || [ "$FAULTY" -eq 0 ] || [ "$SHOWN" != "예" ]; then exit 1; fi
