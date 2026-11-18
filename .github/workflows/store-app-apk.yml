@@ -1,15 +1,22 @@
 name: store-app-apk
 
 # 안드로이드 실습의 상점 앱(playground-pack/mobile)을 APK로 만든다.
-# 손으로만 돈다 (workflow_dispatch). 공개 저장소의 표준 Linux 러너는 무료이고 무제한이다.
+# 손으로만 돈다 (workflow_dispatch). 공개 저장소의 표준 Linux 러너는 무료다.
 # - Expo prebuild로 android 프로젝트를 만들고 Gradle로 release APK를 만든다. 서명은 prebuild가 만드는 debug 키를 쓴다 (스토어에 올리지 않는다)
 # - 에뮬레이터용 x86_64와 Apple 실리콘 에뮬레이터용 arm64-v8a를 한 APK에 넣는다
 # - 결과: APK와 sha256을 아티팩트 store-app-apk로 남긴다
+# - release를 켜면 이 판(playground-pack/mobile/package.json의 version)의 릴리스 pack-store-app-v<판>이 아직 없을 때만 올린다
+#   (testhub 앱이 이 주소에서 APK를 받는다)
 on:
   workflow_dispatch:
+    inputs:
+      release:
+        description: "릴리스 pack-store-app-v<판>으로 올린다 (이미 있으면 올리지 않는다)"
+        type: boolean
+        default: false
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   apk:
@@ -44,10 +51,12 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release.apk "out/testhub-store-app-$version.apk"
           (cd out && sha256sum "testhub-store-app-$version.apk" | tee "testhub-store-app-$version.apk.sha256")
           ls -l out
-      - name: 패키지 이름 확인
+      - name: 패키지 이름과 서명 확인
         run: |
           aapt=$(ls "$ANDROID_HOME"/build-tools/*/aapt | tail -1)
           "$aapt" dump badging out/*.apk | grep -E "^package:|native-code"
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | tail -1)
+          "$apksigner" verify --print-certs out/*.apk | grep -E "Signer #1 certificate (DN|SHA-256)"
       - uses: actions/upload-artifact@v4
         with:
           name: store-app-apk
@@ -57,3 +66,18 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 5
+      - name: 릴리스
+        if: ${{ inputs.release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          tag="pack-store-app-v$version"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$tag 릴리스가 이미 있다. 올리지 않는다"
+            exit 0
+          fi
+          gh release create "$tag" "out/testhub-store-app-$version.apk" "out/testhub-store-app-$version.apk.sha256" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "상점 앱 $version" \
+            --notes "안드로이드 실습 환경의 상점 앱 (Medusa 공식 안내서 코드, React Native, Expo). 패키지 com.testhub.shop, x86_64와 arm64-v8a. 서명은 prebuild가 만든 debug 키라 스토어용이 아니다. 출처와 라이선스는 playground-pack/mobile/NOTICE.md"
