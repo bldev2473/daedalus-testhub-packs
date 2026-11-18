@@ -88,6 +88,12 @@ jobs:
           path: ${{ runner.temp }}/apk
           run-id: ${{ inputs.apk-run-id }}
           github-token: ${{ github.token }}
+      - name: APK 찾기
+        # 이 워크플로의 apk 작업은 store-app.apk, store-app-apk 워크플로의 릴리스 실행은 testhub-store-app-<판>.apk로 올린다
+        run: |
+          apk=$(ls "$RUNNER_TEMP"/apk/*.apk | head -1)
+          ls -l "$RUNNER_TEMP"/apk
+          echo "APK=$apk" >> "$GITHUB_ENV"
       # PostgreSQL 실행 파일은 팩에 없다. 학습자 컴퓨터에서는 관리자가 넣고, 여기서는 npm ci 결과에서 넣는다 (팩 시험과 같다)
       - name: PostgreSQL 패키지 준비
         working-directory: playground-pack
@@ -117,7 +123,6 @@ jobs:
           {
             echo "WEB_PACK=$RUNNER_TEMP/web-pack"
             echo "APPIUM_PACK=$RUNNER_TEMP/appium-pack"
-            echo "APK=$RUNNER_TEMP/apk/store-app.apk"
             echo "STACK_DIR=$RUNNER_TEMP/stack"
           } >> "$GITHUB_ENV"
       - name: 에뮬레이터를 켜고 상점 앱 테스트 돌리기
