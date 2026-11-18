@@ -1,0 +1,65 @@
+name: allure-pack
+
+# Allure 팩을 만들고 시험한 뒤 Releases에 올린다.
+# 팩은 운영체제와 상관없이 하나라 Linux에서 한 번 만든다 (네이티브 모듈은 빌드가 막는다. playground-pack/allure/README.md)
+# - main에 playground-pack/allure이 바뀌어 올라오거나 손으로 실행하면 돈다
+# - 이 판(playground-pack/allure/package.json의 version)의 릴리스 pack-allure-v<판>이 아직 없을 때만 올린다. 있으면 만들고 시험만 한다
+on:
+  push:
+    branches: [main]
+    paths:
+      - "playground-pack/allure/**"
+      - "playground-pack/lib/checks.mjs"
+      - ".github/workflows/allure-pack.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: allure-pack
+  cancel-in-progress: false
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: playground-pack/allure
+    steps:
+      - uses: actions/checkout@v4
+      # 데스크톱 앱의 Electron 44는 Node 24다. 학습자 컴퓨터와 가까운 판으로 만들고 시험한다
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: playground-pack/allure/package-lock.json
+      - run: node build.mjs
+      # 팩을 다른 폴더에 풀어 manifest, 네이티브 모듈과 링크 없음, driver list, 서버 /status까지 본다
+      - run: npm test
+      - name: 팩 크기
+        run: ls -l out/*.tar.gz && cat out/*.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: allure-pack
+          path: |
+            playground-pack/allure/out/*.tar.gz
+            playground-pack/allure/out/*.tar.gz.sha256
+          if-no-files-found: error
+          compression-level: 0
+      - name: 릴리스
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          tag="pack-allure-v$version"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$tag 릴리스가 이미 있다. 올리지 않는다"
+            exit 0
+          fi
+          gh release create "$tag" out/testhub-allure-pack-"$version".tar.gz out/testhub-allure-pack-"$version".tar.gz.sha256 \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Allure 팩 $version" \
+            --notes "testhub가 실행 결과의 보고서를 만들 때 받는 Allure 팩 (Allure 3.33.0). 운영체제와 상관없이 하나이고 네이티브 모듈이 없다. 라이선스 고지는 팩 안의 LICENSES.md"

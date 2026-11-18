@@ -7,10 +7,11 @@ name: pack
 on:
   push:
     branches: [main]
-    # appium 팩과 상점 모바일 앱은 이 팩에 들어가지 않는다 (appium-pack.yml이 따로 만든다)
+    # appium 팩, allure 팩, 상점 모바일 앱은 이 팩에 들어가지 않는다 (appium-pack.yml, allure-pack.yml이 따로 만든다)
     paths:
       - "playground-pack/**"
       - "!playground-pack/appium/**"
+      - "!playground-pack/allure/**"
       - "!playground-pack/mobile/**"
       - ".github/workflows/pack.yml"
   workflow_dispatch:
