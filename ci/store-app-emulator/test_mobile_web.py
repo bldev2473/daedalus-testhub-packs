@@ -69,6 +69,7 @@ def click(wait, locator):
 
 
 def add(driver, wait, product, options, count):
+    """상품 화면을 열어 옵션을 고르고 담는다. 머리글의 장바구니 개수가 count가 되지 않으면 그 글자와 함께 실패한다"""
     driver.get(f"{STORE}/dk/products/{product}")
     wait.until(ec.presence_of_element_located(by_testid("add-product-button")))
     for text in options:
@@ -79,8 +80,14 @@ def add(driver, wait, product, options, count):
     try:
         WebDriverWait(driver, 10).until(shows)
     except TimeoutException:
+        # 상점은 첫 장바구니를 만든 직후 머리글을 다시 그리지 않을 때가 있다. 사람이 하듯 새로고침해 다시 본다
         driver.refresh()
-        wait.until(shows)
+        try:
+            WebDriverWait(driver, 20).until(shows)
+        except TimeoutException:
+            dump(driver, f"9-count-{count}")
+            shown = driver.find_element(*by_testid("nav-cart-link")).text
+            raise AssertionError(f"머리글의 장바구니 개수가 {count}이 아니다: {shown!r}") from None
 
 
 def test_store_lists_four_products_on_a_phone(chrome):
@@ -96,16 +103,11 @@ def test_store_lists_four_products_on_a_phone(chrome):
 
 
 def test_cart_count_and_subtotal_on_a_phone(chrome):
-    """티셔츠 2개와 반바지 1개를 담으면 머리글은 3, 소계는 35다 (F06은 머리글이 2, F03은 소계가 25로 보인다)"""
+    """티셔츠 2개와 반바지 1개를 담으면 머리글은 3, 소계는 35다 (F06은 머리글이 줄 수로, F03은 소계가 20으로 보인다)"""
     wait = WebDriverWait(chrome, TIMEOUT_S)
     add(chrome, wait, "t-shirt", ["Black", "M"], 1)
     add(chrome, wait, "t-shirt", ["Black", "M"], 2)
-    # 개수 표시 결함(F06)은 여기서 머리글이 3이 되지 못하고 2로 남아 시간 초과로 드러난다
-    try:
-        add(chrome, wait, "shorts", ["M"], 3)
-    except TimeoutException:
-        dump(chrome, "9-count")
-        raise AssertionError(f"머리글의 장바구니 개수가 3이 아니다: {chrome.find_element(*by_testid('nav-cart-link')).text!r}")
+    add(chrome, wait, "shorts", ["M"], 3)
     chrome.get(f"{STORE}/dk/cart")
     subtotal = wait.until(ec.presence_of_element_located(by_testid("cart-subtotal")))
     dump(chrome, "3-cart")
@@ -118,7 +120,8 @@ def test_price_sort_is_ascending_on_a_phone(chrome):
     wait = WebDriverWait(chrome, TIMEOUT_S)
     chrome.get(STORE + "/dk/store?sortBy=price_asc")
     wait.until(ec.presence_of_element_located(by_testid("price")))
-    texts = [e.get_attribute("textContent") for e in chrome.find_elements(*by_testid("price"))]
+    # Appium의 Chrome에서는 get_attribute("textContent")가 None이라 JS로 읽는다
+    texts = [chrome.execute_script("return arguments[0].textContent", e) for e in chrome.find_elements(*by_testid("price"))]
     prices = [float(t.strip().lstrip("€").replace(",", "")) for t in texts]
     dump(chrome, "4-sort")
     assert prices == sorted(prices), f"가격 정렬이 오름차순이 아니다: {prices}"

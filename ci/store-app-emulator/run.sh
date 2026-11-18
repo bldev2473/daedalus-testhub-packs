@@ -108,7 +108,7 @@ web_phase "" "" "" mw-clean; MW_CLEAN=$CODE
 echo "== 6. 모바일 웹: F03(합계 계산 오류)"
 web_phase F03 subtotal "소계가 35가 아니다" mw-f03; MW_F03=$CODE; MW_F03_SEEN=$SEEN
 echo "== 7. 모바일 웹: F06(머리글 개수)"
-web_phase F06 subtotal "장바구니 개수가 3이 아니다" mw-f06; MW_F06=$CODE; MW_F06_SEEN=$SEEN
+web_phase F06 subtotal "머리글의 장바구니 개수가" mw-f06; MW_F06=$CODE; MW_F06_SEEN=$SEEN
 echo "== 8. 모바일 웹: F07(가격 정렬 오류)"
 web_phase F07 sort "가격 정렬이 오름차순이 아니다" mw-f07; MW_F07=$CODE; MW_F07_SEEN=$SEEN
 
