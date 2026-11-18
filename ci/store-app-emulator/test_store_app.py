@@ -1,0 +1,157 @@
+"""에뮬레이터의 상점 앱에서 상품을 담고, 장바구니 화면, 상점 API, DB가 같은지 본다.
+
+testhub 없이 Appium-Python-Client와 psycopg만 쓴다. 학습자가 하게 될 일과 같다:
+앱에서 수량 2로 담고, 앱 화면의 수량을 서버(API, DB)가 아는 수량과 맞춰 본다.
+- 결함이 없으면 셋 다 2다
+- F01(담기 수량 무시)을 켜면 앱 화면의 수량이 1이라 `앱 화면의 수량` 단계에서 실패한다 (CI가 실패를 기대한다)
+"""
+
+import json
+import os
+import subprocess
+import urllib.request
+
+import psycopg
+import pytest
+from appium import webdriver
+from appium.options.android import UiAutomator2Options
+from appium.webdriver.common.appiumby import AppiumBy
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.webdriver.support.ui import WebDriverWait
+
+APP = "com.testhub.shop"
+APPIUM_URL = os.environ.get("APPIUM_URL", "http://127.0.0.1:4723")
+DEVICE_UDID = os.environ.get("DEVICE_UDID", "emulator-5554")
+SHOTS = os.environ.get("SHOTS", "shots")
+MEDUSA_URL = f"http://localhost:{os.environ.get('MEDUSA_PORT', '9000')}"
+PG_PORT = int(os.environ.get("PG_PORT", "55432"))
+KEY = os.environ["FIXED_KEY"]
+TIMEOUT_S = 90
+
+
+def by_id(test_id):
+    return (AppiumBy.ANDROID_UIAUTOMATOR, f'new UiSelector().resourceId("{test_id}")')
+
+
+def by_id_pattern(pattern):
+    return (AppiumBy.ANDROID_UIAUTOMATOR, f'new UiSelector().resourceIdMatches("{pattern}")')
+
+
+def by_text(text):
+    return (AppiumBy.ANDROID_UIAUTOMATOR, f'new UiSelector().text("{text}")')
+
+
+@pytest.fixture
+def driver():
+    # 이전 테스트가 남긴 장바구니와 지역 선택(AsyncStorage)을 지운다
+    subprocess.run(["adb", "shell", "pm", "clear", APP], check=False, capture_output=True)
+    options = UiAutomator2Options()
+    options.udid = DEVICE_UDID
+    options.app_package = APP
+    options.app_activity = ".MainActivity"
+    options.no_reset = True
+    options.auto_grant_permissions = True
+    options.new_command_timeout = 180
+    d = webdriver.Remote(APPIUM_URL, options=options)
+    os.makedirs(SHOTS, exist_ok=True)
+    yield d
+    d.quit()
+
+
+def dump(driver, name):
+    """무엇이 보였는지 남긴다: 화면, 요소 트리, 지금 앱"""
+    driver.get_screenshot_as_file(os.path.join(SHOTS, f"{name}.png"))
+    with open(os.path.join(SHOTS, f"{name}.xml"), "w", encoding="utf-8") as f:
+        f.write(driver.page_source)
+    with open(os.path.join(SHOTS, f"{name}.txt"), "w", encoding="utf-8") as f:
+        f.write(f"package={driver.current_package}\nactivity={driver.current_activity}\n")
+
+
+def settle(driver):
+    """부팅 직후의 느린 에뮬레이터를 달랜다: 응답 없음 대화 상자는 "Wait"로 닫고, 앱이 앞에 없으면 다시 띄운다"""
+    for _ in range(4):
+        waits = driver.find_elements(*by_text("Wait"))
+        if waits:
+            waits[0].click()
+        if driver.current_package != APP:
+            driver.activate_app(APP)
+        if driver.find_elements(*by_id_pattern("product-card-.*")):
+            return
+
+
+def wait_for(driver, locator, name):
+    try:
+        return WebDriverWait(driver, TIMEOUT_S).until(lambda d: d.find_element(*locator))
+    except TimeoutException:
+        dump(driver, f"9-not-found-{name}")
+        raise
+
+
+def api(path):
+    request = urllib.request.Request(f"{MEDUSA_URL}{path}", headers={"x-publishable-api-key": KEY})
+    with urllib.request.urlopen(request, timeout=30) as r:
+        return json.load(r)
+
+
+def latest_cart_id():
+    with psycopg.connect(host="localhost", port=PG_PORT, user="postgres", password="postgres", dbname="medusa") as c:
+        row = c.execute("select id from cart order by created_at desc limit 1").fetchone()
+    return row[0] if row else None
+
+
+def db_quantity(cart_id):
+    with psycopg.connect(host="localhost", port=PG_PORT, user="postgres", password="postgres", dbname="medusa") as c:
+        rows = c.execute(
+            "select quantity from cart_line_item where cart_id = %s and deleted_at is null", (cart_id,)
+        ).fetchall()
+    return [r[0] for r in rows]
+
+
+def test_app_reaches_the_store(driver):
+    """앱이 고정 키로 localhost:9000(adb reverse)의 상점에 붙어 상품 카드를 그린다"""
+    dump(driver, "0-after-session")
+    settle(driver)
+    wait_for(driver, by_id("product-card-t-shirt"), "product-card")
+    dump(driver, "1-home")
+
+
+def test_add_two_items_and_compare_app_api_and_db(driver):
+    settle(driver)
+    wait_for(driver, by_id("product-card-t-shirt"), "product-card").click()
+
+    wait_for(driver, by_id("quantity-increase"), "quantity-increase").click()
+    assert driver.find_element(*by_id("quantity-value")).text == "2"
+    dump(driver, "2-detail-quantity-2")
+
+    driver.find_element(*by_id("add-to-cart-button")).click()
+    wait_for(driver, by_text("Product added to cart!"), "toast")
+
+    driver.find_element(*by_id("tab-cart")).click()
+    wait_for(driver, by_id("cart-subtotal"), "cart-subtotal")
+    quantity = wait_for(driver, by_id_pattern("cart-item-quantity-.*"), "cart-item-quantity").text
+    dump(driver, "3-cart")
+
+    # 서버가 아는 수량: 앱이 만든 가장 최근 장바구니
+    cart_id = latest_cart_id()
+    assert cart_id, "앱이 장바구니를 만들지 않았다"
+    items = api(f"/store/carts/{cart_id}?fields=*items")["cart"]["items"]
+    api_quantity = [i["quantity"] for i in items]
+    db_quantities = db_quantity(cart_id)
+    print("앱 화면:", quantity, "API:", api_quantity, "DB:", db_quantities)
+
+    assert quantity == "2", f"앱 화면의 수량이 2가 아니다: {quantity} (API {api_quantity}, DB {db_quantities})"
+    assert api_quantity == [2]
+    assert db_quantities == [2]
+
+
+def test_cart_total_matches_api(driver):
+    """앱 장바구니 화면의 소계가 API의 item_subtotal(소수 둘째 자리)과 같다"""
+    settle(driver)
+    wait_for(driver, by_id("product-card-t-shirt"), "product-card").click()
+    wait_for(driver, by_id("add-to-cart-button"), "add").click()
+    wait_for(driver, by_text("Product added to cart!"), "toast")
+    driver.find_element(*by_id("tab-cart")).click()
+    shown = wait_for(driver, by_id("cart-subtotal"), "cart-subtotal").text
+    cart = api(f"/store/carts/{latest_cart_id()}?fields=item_subtotal,currency_code")["cart"]
+    digits = "".join(ch for ch in shown if ch.isdigit() or ch == ".")
+    assert float(digits) == pytest.approx(float(cart["item_subtotal"]), abs=0.01), (shown, cart)

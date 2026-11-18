@@ -1,0 +1,126 @@
+name: store-app-emulator-check
+
+# 상점 앱을 에뮬레이터에 깔고, 상점 서버(웹 팩)에 붙여 Appium으로 담기까지 한 번에 돌려 본다 (KVM 가속).
+# 손으로만 돈다 (workflow_dispatch). 공개 저장소의 표준 Linux 러너는 무료이고 무제한이다.
+# - apk 작업: playground-pack/mobile을 APK로 만든다 (store-app-apk와 같다)
+# - check 작업: 공개한 웹 팩과 Appium 팩을 받아 상점 서버를 켜고, 에뮬레이터에 APK를 깔아 ci/store-app-emulator의 테스트를 돌린다
+#   결함 없음에서 통과하고, F01(담기 수량 무시)을 켜면 실패하는 것까지 본다
+# - Android SDK 라이선스는 reactivecircus/android-emulator-runner가 러너의 SDK에서 수락한다 (이 실행에서만)
+# - 결과: 로그, 에뮬레이터 화면(스크린샷), pytest 결과를 아티팩트 store-app-emulator-check로 남긴다
+# - testhub 소스는 쓰지 않는다. 팩과 이 저장소의 앱 소스, Appium-Python-Client만으로 본다
+on:
+  workflow_dispatch:
+    inputs:
+      api-level:
+        description: "안드로이드 API 레벨 (실습 환경은 34)"
+        default: "34"
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+        working-directory: playground-pack/mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: playground-pack/mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc --noEmit
+      - run: npx expo prebuild --platform android --no-install
+      - name: APK 만들기
+        working-directory: playground-pack/mobile/android
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=x86_64,arm64-v8a --no-daemon --console=plain
+      - name: 이름 붙이기
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/release/app-release.apk out/store-app.apk
+          ls -l out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: store-app-apk
+          path: playground-pack/mobile/out/store-app.apk
+          if-no-files-found: error
+          compression-level: 0
+
+  check:
+    needs: apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest "Appium-Python-Client>=4" "psycopg[binary]"
+      - uses: actions/download-artifact@v4
+        with:
+          name: store-app-apk
+          path: ${{ runner.temp }}/apk
+      # PostgreSQL 실행 파일은 팩에 없다. 학습자 컴퓨터에서는 관리자가 넣고, 여기서는 npm ci 결과에서 넣는다 (팩 시험과 같다)
+      - name: PostgreSQL 패키지 준비
+        working-directory: playground-pack
+        run: npm ci --no-audit --no-fund
+      - name: KVM 권한 열기
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
+      - name: 공개한 팩 받기 (웹, Appium)
+        run: |
+          fetch() { # 이름 태그 파일 폴더
+            base="https://github.com/${GITHUB_REPOSITORY}/releases/download/$2"
+            curl -fsSL -O "$base/$3" -O "$base/$3.sha256"
+            sha256sum -c "$3.sha256"
+            mkdir -p "$4"
+            tar -xzf "$3" -C "$4"
+          }
+          web=$(node -p "require('./playground-pack/package.json').version")
+          appium=$(node -p "require('./playground-pack/appium/package.json').version")
+          fetch 웹 "pack-web-v$web" "testhub-web-pack-$web.tar.gz" "$RUNNER_TEMP/web-pack"
+          fetch Appium "pack-appium-v$appium" "testhub-appium-pack-$appium.tar.gz" "$RUNNER_TEMP/appium-pack"
+          pg=node_modules/@embedded-postgres/linux-x64
+          mkdir -p "$RUNNER_TEMP/web-pack/node_modules/@embedded-postgres"
+          cp -r "playground-pack/$pg" "$RUNNER_TEMP/web-pack/node_modules/@embedded-postgres/"
+          {
+            echo "WEB_PACK=$RUNNER_TEMP/web-pack"
+            echo "APPIUM_PACK=$RUNNER_TEMP/appium-pack"
+            echo "APK=$RUNNER_TEMP/apk/store-app.apk"
+            echo "STACK_DIR=$RUNNER_TEMP/stack"
+          } >> "$GITHUB_ENV"
+      - name: 에뮬레이터를 켜고 상점 앱 테스트 돌리기
+        # 제3자 액션이라 움직이는 태그(v2) 대신 v2.38.0 커밋에 고정한다
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: ${{ inputs.api-level }}
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disk-size: 4096M
+          ram-size: 4096M
+          cores: 4
+          force-avd-creation: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -no-metrics
+          script: bash ci/store-app-emulator/run.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: store-app-emulator-check
+          path: out/
+          if-no-files-found: warn

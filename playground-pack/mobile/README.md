@@ -15,6 +15,7 @@ testhub의 웹 실습 환경(Medusa 2.18.0)에 붙는 모바일 상점 앱입니
 - Appium이 요소를 찾도록 `testID`를 달았습니다 (아래 "Appium이 찾는 이름"). 안드로이드에서 `testID`는 `resource-id`가 됩니다
 - `lib/sdk.ts`의 기본 publishable key를 testhub 실습 환경의 고정 키로 했습니다 (`src/testhub/playground/components.py`의 `FIXED_PUBLISHABLE_KEY`와 같아야 하고, 테스트가 확인합니다). 다른 Medusa에 붙일 때는 `EXPO_PUBLIC_MEDUSA_PUBLISHABLE_API_KEY`로 바꿉니다
 - `app.json`에 안드로이드 패키지 이름(`com.testhub.shop`)을 정했습니다
+- release APK는 기본으로 http 통신을 막으므로 `expo-build-properties`로 `usesCleartextTraffic`을 켰습니다 (앱이 `http://localhost:9000`에 붙습니다)
 
 - `@medusajs/js-sdk`, `@medusajs/types`를 `2.18.0`으로 고정했습니다 (안내서는 버전을 적지 않고, 예제 저장소는 `preview`입니다)
 - `.env.template`을 더했습니다
