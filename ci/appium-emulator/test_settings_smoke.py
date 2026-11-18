@@ -45,9 +45,23 @@ def dump(driver, name):
         f.write(f"package={driver.current_package}\nactivity={driver.current_activity}\n")
 
 
+def settle(driver, package="com.android.settings"):
+    """부팅 직후의 느린 에뮬레이터를 달랜다: ANR 대화 상자(응답 없음)는 "Wait"로 닫고, 설정 앱이 앞에 없으면 다시 띄운다"""
+    for _ in range(6):
+        waits = driver.find_elements(*by_text("Wait"))
+        if waits:
+            waits[0].click()
+        if driver.current_package != package:
+            driver.activate_app(package)
+        if driver.find_elements(*by_text("Network & internet")):
+            return
+
+
 def test_open_network_and_internet(driver):
     wait = WebDriverWait(driver, TIMEOUT_S)
     dump(driver, "0-after-session")
+    settle(driver)
+    dump(driver, "0-after-settle")
     try:
         wait.until(lambda d: d.find_element(*by_text("Network & internet")))
     except TimeoutException:

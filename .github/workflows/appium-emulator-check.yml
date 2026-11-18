@@ -53,7 +53,8 @@ jobs:
           target: google_apis
           profile: pixel_6
           disk-size: 2048M
-          ram-size: 2048M
+          ram-size: 4096M
+          cores: 4
           force-avd-creation: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -no-metrics
           script: bash ci/appium-emulator/run.sh

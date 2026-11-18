@@ -8,6 +8,12 @@ OUT="${OUT:-out}"
 mkdir -p "$OUT"
 
 adb devices -l | tee "$OUT/adb-devices.txt"
+# 느린 CI 에뮬레이터를 달랜다: 애니메이션을 끄고, 부팅 직후의 시스템이 가라앉기를 기다리고, 열린 대화 상자를 닫는다
+adb shell settings put global window_animation_scale 0
+adb shell settings put global transition_animation_scale 0
+adb shell settings put global animator_duration_scale 0
+adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null || true
+sleep 45
 adb shell getprop ro.build.version.release | tee "$OUT/android-version.txt"
 
 export APPIUM_HOME="$PACK/appium-home"
