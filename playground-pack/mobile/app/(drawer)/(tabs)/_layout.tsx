@@ -11,7 +11,8 @@ export default function TabLayout() {
   const colorScheme = useColorScheme()
   const { cart } = useCart()
 
-  const itemCount = cart?.items?.length || 0
+  // 하단 탭의 장바구니 배지는 담은 수량의 합이다 (웹 상점의 결함 없는 머리글과 같다. 줄 수가 아니다)
+  const itemCount = cart?.items?.reduce((sum, item) => sum + item.quantity, 0) || 0
 
   return (
     <Tabs

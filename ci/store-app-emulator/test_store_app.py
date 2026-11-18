@@ -161,6 +161,12 @@ def test_add_two_items_and_compare_app_api_and_db(driver):
     assert quantity == "2", f"앱 화면의 수량이 2가 아니다: {quantity} (API {api_quantity}, DB {db_quantities})"
     assert api_quantity == [2]
     assert db_quantities == [2]
+    # 하단 탭의 장바구니 배지는 줄 수(1)가 아니라 담은 수량의 합(2)이다
+    badge = driver.find_element(
+        AppiumBy.ANDROID_UIAUTOMATOR,
+        'new UiSelector().resourceId("tab-cart").childSelector(new UiSelector().text("2"))',
+    )
+    assert badge.text == "2"
 
 
 def test_cart_total_matches_api(driver):
