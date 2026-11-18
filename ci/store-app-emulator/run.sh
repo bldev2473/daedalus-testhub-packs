@@ -34,6 +34,7 @@ sleep 45
 
 echo "== 에뮬레이터 안의 localhost:9000을 서버에 잇는다"
 adb reverse tcp:9000 "tcp:$MEDUSA_PORT"
+adb reverse tcp:8000 "tcp:${STORE_PORT:-8000}"
 adb reverse --list | tee "$OUT/adb-reverse.txt"
 
 echo "== 앱을 깐다"
@@ -42,7 +43,9 @@ adb shell pm list packages com.testhub.shop | tee "$OUT/package.txt"
 
 echo "== Appium을 켠다"
 export APPIUM_HOME="$APPIUM_PACK/appium-home"
-node "$APPIUM_PACK/node_modules/appium/index.js" --address 127.0.0.1 --port 4723 >"$OUT/appium.log" 2>&1 &
+# 모바일 웹(휴대폰 Chrome)은 chromedriver가 필요하다. Chrome 판에 맞는 것을 Appium이 받게 한다
+node "$APPIUM_PACK/node_modules/appium/index.js" --address 127.0.0.1 --port 4723 \
+  --allow-insecure uiautomator2:chromedriver_autodownload >"$OUT/appium.log" 2>&1 &
 APPIUM_PID=$!
 for _ in $(seq 1 60); do
   curl -fsS http://127.0.0.1:4723/status >"$OUT/status.json" 2>/dev/null && break
@@ -85,6 +88,30 @@ fault_phase F04 stored "서버에 담긴 항목이 없다" f04
 F04_CODE=$CODE; F04_SEEN=$SEEN
 adb exec-out screencap -p >"$OUT/emulator-screen.png" 2>/dev/null
 
+# 모바일 웹: 휴대폰 Chrome으로 웹 상점을 연다. 웹 상점에만 있는 결함(F03, F06, F07)을 찾는다
+# MOBILE_WEB_REQUIRED=1이면 이 단계의 실패도 실행의 실패다 (아직 시험 중이라 기본은 결과만 남긴다)
+MW_TEST=ci/store-app-emulator/test_mobile_web.py
+web_phase() { # $1 결함 번호(없으면 빈 값), $2 pytest -k, $3 실패 메시지에 있어야 할 글, $4 이름
+  $STACK storefront "$1" >>"$OUT/stack-install.log" 2>&1 || { tail -30 "$OUT/stack-install.log"; CODE=99; SEEN="아니오"; return; }
+  set +e
+  if [ -n "$2" ]; then K=(-k "$2"); else K=(); fi
+  SHOTS="$OUT/shots-$4" python -m pytest -v "$MW_TEST" "${K[@]}" 2>&1 | tee "$OUT/pytest-$4.log"
+  CODE=${PIPESTATUS[0]}
+  if [ -n "$3" ] && grep -q "$3" "$OUT/pytest-$4.log"; then SEEN="예"; else SEEN="아니오"; fi
+}
+# 앞 단계에서 켠 Medusa 결함(F04)을 끄고 다시 켠다. 웹 상점의 결함(F03, F06, F07)은 상점을 켤 때 건다
+set -e
+$STACK start >>"$OUT/stack-install.log" 2>&1 || { tail -30 "$OUT/stack-install.log"; exit 1; }
+set +e
+echo "== 5. 모바일 웹: 결함 없음 (통과해야 한다)"
+web_phase "" "" "" mw-clean; MW_CLEAN=$CODE
+echo "== 6. 모바일 웹: F03(합계 계산 오류)"
+web_phase F03 subtotal "소계가 35가 아니다" mw-f03; MW_F03=$CODE; MW_F03_SEEN=$SEEN
+echo "== 7. 모바일 웹: F06(머리글 개수)"
+web_phase F06 subtotal "장바구니 개수가 3이 아니다" mw-f06; MW_F06=$CODE; MW_F06_SEEN=$SEEN
+echo "== 8. 모바일 웹: F07(가격 정렬 오류)"
+web_phase F07 sort "가격 정렬이 오름차순이 아니다" mw-f07; MW_F07=$CODE; MW_F07_SEEN=$SEEN
+
 # 다른 이유(요소를 못 찾음 등)로 실패한 것을 결함이 드러난 것으로 세지 않도록, 수량 비교에서 실패했는지 본다
 if grep -q "앱 화면의 수량이 2가 아니다: 1 " "$OUT/pytest-f01.log"; then SHOWN="예"; else SHOWN="아니오"; fi
 {
@@ -92,6 +119,11 @@ if grep -q "앱 화면의 수량이 2가 아니다: 1 " "$OUT/pytest-f01.log"; t
   echo "F01 켬:    종료 코드 $FAULTY (0이 아니어야 한다), 앱 화면의 수량이 1로 드러났는가: $SHOWN"
   echo "F02 켬:    종료 코드 $F02_CODE (0이 아니어야 한다), 담기 실패 안내가 드러났는가: $F02_SEEN"
   echo "F04 켬:    종료 코드 $F04_CODE (0이 아니어야 한다), 서버에 항목이 없음이 드러났는가: $F04_SEEN"
+  echo "모바일 웹 결함 없음: 종료 코드 $MW_CLEAN (0이어야 한다)"
+  echo "모바일 웹 F03 켬:   종료 코드 $MW_F03 (0이 아니어야 한다), 소계 오류가 드러났는가: $MW_F03_SEEN"
+  echo "모바일 웹 F06 켬:   종료 코드 $MW_F06 (0이 아니어야 한다), 개수 오류가 드러났는가: $MW_F06_SEEN"
+  echo "모바일 웹 F07 켬:   종료 코드 $MW_F07 (0이 아니어야 한다), 정렬 오류가 드러났는가: $MW_F07_SEEN"
 } | tee "$OUT/result.txt"
+if [ "${MOBILE_WEB_REQUIRED:-0}" = "1" ] && { [ "$MW_CLEAN" -ne 0 ] || [ "$MW_F03_SEEN" != "예" ] || [ "$MW_F06_SEEN" != "예" ] || [ "$MW_F07_SEEN" != "예" ]; }; then exit 1; fi
 if [ "$CLEAN" -ne 0 ] || [ "$FAULTY" -eq 0 ] || [ "$SHOWN" != "예" ] \
   || [ "$F02_CODE" -eq 0 ] || [ "$F02_SEEN" != "예" ] || [ "$F04_CODE" -eq 0 ] || [ "$F04_SEEN" != "예" ]; then exit 1; fi
