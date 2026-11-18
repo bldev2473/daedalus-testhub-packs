@@ -168,6 +168,9 @@ try {
   const archive = `${packName}.tar.gz`
   rmSync(join(dist, archive), { force: true })
   // 경로에 드라이브 문자(C:)가 들어가면 GNU tar 가 원격 호스트로 읽는다. 상대 경로만 쓴다
+  // macOS tar 는 확장 속성을 ._ 파일로 함께 묶는다. testhub(Python tarfile)는 이것을 진짜 파일로 풀어
+  // Medusa 가 ._*.js 를 코드로 읽다가 멈추므로 묶지 않게 한다 (다른 운영체제의 tar 는 이 변수를 무시한다)
+  env.COPYFILE_DISABLE = "1"
   run("tar", ["-czf", archive, "-C", "stage", "."], dist)
   const hex = sha256(join(dist, archive))
   writeFileSync(join(dist, `${archive}.sha256`), `${hex}  ${archive}\n`)

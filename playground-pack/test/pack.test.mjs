@@ -10,7 +10,7 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { after, before, describe, test } from "node:test"
 import { fileURLToPath } from "node:url"
-import { checkLicenses, MEDUSA_VERSION, medusaVersionViolations } from "../lib/checks.mjs"
+import { appleDoubleEntries, checkLicenses, MEDUSA_VERSION, medusaVersionViolations } from "../lib/checks.mjs"
 import { FAULT_CONFLICTS, FAULTS } from "../lib/faults.mjs"
 import { platformPackagesLeft, POSTGRES_PACKAGES, postgresPackages } from "../lib/platforms.mjs"
 
@@ -142,6 +142,24 @@ describe("저장소", () => {
       rmSync(d, { recursive: true, force: true })
     }
   })
+
+  // macOS tar 는 확장 속성을 ._ 파일로 묶고, 풀 때 다시 속성으로 합쳐 tar -t 에도 보이지 않는다.
+  // testhub(Python tarfile)는 진짜 파일로 풀어 Medusa 가 ._*.js 를 코드로 읽다가 멈춘다
+  test("macOS tar 가 묶은 ._ 항목을 찾는다", { skip: process.platform !== "darwin" && "macOS 만" }, async () => {
+    const d = tempDir("pack-ad-")
+    try {
+      mkdirSync(join(d, "stage"))
+      writeFileSync(join(d, "stage", "a.js"), "x\n")
+      assert.equal(spawnSync("xattr", ["-w", "com.example.t", "1", join(d, "stage", "a.js")]).status, 0)
+      const make = (name, extra) => spawnSync("tar", ["-czf", name, "-C", "stage", "."], { cwd: d, env: { ...process.env, ...extra } })
+      assert.equal(make("with.tgz", {}).status, 0)
+      assert.equal(make("without.tgz", { COPYFILE_DISABLE: "1" }).status, 0)
+      assert.deepEqual(await appleDoubleEntries(join(d, "with.tgz")), ["._.", "./._a.js"])
+      assert.deepEqual(await appleDoubleEntries(join(d, "without.tgz")), [])
+    } finally {
+      rmSync(d, { recursive: true, force: true })
+    }
+  })
 })
 
 describe("만든 팩", { skip: !existsSync(archive) && `팩이 없다 (먼저 node build.mjs): ${archiveName}` }, () => {
@@ -198,6 +216,11 @@ describe("만든 팩", { skip: !existsSync(archive) && `팩이 없다 (먼저 no
     assert.deepEqual(bins, [])
   })
 
+  test("팩에 macOS 의 ._ 메타데이터 항목이 없다", async () => {
+    const found = await appleDoubleEntries(archive)
+    assert.deepEqual(found.slice(0, 5), [], `${found.length}개`)
+  })
+
   test("팩에 운영체제에 묶인 패키지가 없다 (넣은 PostgreSQL 만 있다)", () => {
     assert.deepEqual(platformPackagesLeft(pack), [`node_modules/${POSTGRES_PACKAGES[platform]}`])
     assert.equal(existsSync(join(pack, "backend", "node_modules", "esbuild", "bin")), false)
@@ -246,8 +269,14 @@ describe("만든 팩", { skip: !existsSync(archive) && `팩이 없다 (먼저 no
     assert.equal(JSON.parse(readFileSync(join(xdg, "medusa", "config.json"), "utf8")).telemetry.enabled, false)
     assert.deepEqual(readdirSync(home), [])
 
-    const key = db("publishable-key", String(pgPort))
-    assert.match(key, /^pk_/)
+    const seeded = db("publishable-key", String(pgPort))
+    assert.match(seeded, /^pk_/)
+    // 키를 고정 값으로 바꿀 수 있다. 바꾼 값을 Medusa가 받아들이는지는 아래 상점 API 요청으로 본다
+    const fixedKey = "pk_00000000testhub0000000000000000000000000000000000000000000000000"
+    const key = db("publishable-key", String(pgPort), fixedKey)
+    assert.equal(key, fixedKey)
+    assert.equal(db("publishable-key", String(pgPort)), fixedKey)
+    assert.throws(() => db("publishable-key", String(pgPort), "not-a-key"))
     db("snapshot", String(pgPort))
 
     const medusa = spawn(process.execPath, [join(pack, "bin", "medusa.mjs"), "start"], { env: medusaEnv, stdio: ["ignore", "pipe", "pipe"] })

@@ -1,6 +1,63 @@
-// 팩 빌드와 시험이 함께 쓰는 검사: Medusa 판 고정, 의존성 라이선스
-import { existsSync, readdirSync, readFileSync } from "node:fs"
+// 팩 빌드와 시험이 함께 쓰는 검사: Medusa 판 고정, 의존성 라이선스, 압축 항목
+import { createReadStream, existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
+import { createGunzip } from "node:zlib"
+
+/**
+ * tar.gz 에서 이름이 ._ 로 시작하는 항목(macOS 의 AppleDouble 메타데이터)의 경로를 돌려준다.
+ * 시스템 tar 는 이 항목을 속성으로 합쳐 보여 주지 않으므로 헤더를 직접 읽는다 (ustar, pax path, GNU 긴 이름)
+ */
+export async function appleDoubleEntries(archive) {
+  const found = []
+  const text = (b) => b.toString("utf8").replace(/\0.*$/s, "")
+  let rest = Buffer.alloc(0)
+  let skip = 0 // 건너뛸 내용 바이트
+  let capture = null // 이름을 담은 pax, GNU 긴 이름 항목의 내용
+  let nextName = null
+  for await (const chunk of createReadStream(archive).pipe(createGunzip())) {
+    const data = rest.length ? Buffer.concat([rest, chunk]) : chunk
+    let off = 0
+    while (off < data.length) {
+      if (skip > 0) {
+        const n = Math.min(skip, data.length - off)
+        skip -= n
+        off += n
+        continue
+      }
+      if (capture) {
+        const n = Math.min(capture.padded - capture.got, data.length - off)
+        capture.parts.push(data.subarray(off, off + n))
+        capture.got += n
+        off += n
+        if (capture.got < capture.padded) continue
+        const body = Buffer.concat(capture.parts).subarray(0, capture.size)
+        if (capture.type === "L") nextName = text(body)
+        else nextName = /(?:^|\n)\d+ path=([^\n]*)\n/.exec(body.toString("utf8"))?.[1] ?? null
+        capture = null
+        continue
+      }
+      if (data.length - off < 512) break
+      const h = data.subarray(off, off + 512)
+      off += 512
+      if (h.every((b) => b === 0)) continue
+      const size = parseInt(text(h.subarray(124, 136)).trim() || "0", 8)
+      const padded = Math.ceil(size / 512) * 512
+      const type = String.fromCharCode(h[156])
+      if (type === "x" || type === "L") {
+        capture = { type, size, padded, parts: [], got: 0 }
+        continue
+      }
+      skip = padded
+      if (type === "g") continue
+      const prefix = text(h.subarray(345, 500))
+      const name = nextName ?? (prefix ? `${prefix}/${text(h.subarray(0, 100))}` : text(h.subarray(0, 100)))
+      nextName = null
+      if (name.replace(/\/+$/, "").split("/").pop().startsWith("._")) found.push(name)
+    }
+    rest = data.subarray(off)
+  }
+  return found
+}
 
 export const MEDUSA_VERSION = "2.18.0"
 // @medusajs 이름이지만 Medusa 본체와 판을 따로 매기는 패키지 (디자인 시스템)

@@ -1,25 +1,27 @@
 #!/usr/bin/env node
-// 실습 환경의 PostgreSQL 제어. 팩 안에서 Electron Node 나 시스템 Node 로 돈다.
+// 실습 환경의 PostgreSQL 제어. 팩 안에서 Electron Node나 시스템 Node로 실행된다.
 //
 //   node db.mjs init <datadir>
 //   node db.mjs start <datadir> <port> [--until-stdin-closes]
-//       준비되면 stdout 에 "PG READY" 한 줄. SIGINT, SIGTERM 에 끈다.
-//       --until-stdin-closes 이면 표준 입력이 닫힐 때도 끈다 (Windows 는 신호를 보낼 수 없어서 부모가 입력을 닫는다)
+//       준비되면 stdout에 "PG READY" 한 줄. SIGINT, SIGTERM에 끈다.
+//       --until-stdin-closes이면 표준 입력이 닫힐 때도 끈다 (Windows는 신호를 보낼 수 없어서 부모가 입력을 닫는다)
 //       데이터 폴더에 지난 실행의 서버가 남아 있으면 그 서버가 이 데이터 폴더의 것인지 확인하고 끈 뒤 시작한다
-//       PostgreSQL 이 먼저 끝나면 종료 코드 1 로 끝난다. 띄우기는 pg_ctl 이 하고 로그는 <datadir>/postgres.log
+//       PostgreSQL이 먼저 끝나면 종료 코드 1로 끝난다. 띄우기는 pg_ctl이 하고 로그는 <datadir>/postgres.log
 //   node db.mjs stop <datadir>
-//       남은 서버를 끈다. 서버에 접속해 data_directory 가 이 폴더인지 확인한 뒤에만 pg_ctl 로 끈다
-//       (postmaster.pid 의 PID 가 다른 프로그램에 다시 쓰였을 수 있어서다). "PG STOPPED" 또는 "PG NOT RUNNING"
+//       남은 서버를 끈다. 서버에 접속해 data_directory가 이 폴더인지 확인한 뒤에만 pg_ctl로 끈다
+//       (postmaster.pid의 PID가 다른 프로그램에 다시 쓰였을 수 있어서다). "PG STOPPED" 또는 "PG NOT RUNNING"
 //   node db.mjs create <port> <db>          없으면 만든다
-//   node db.mjs snapshot <port>             medusa 를 복제해 medusa_seed 를 만든다 (있으면 바꾼다)
-//   node db.mjs reset <port>                medusa 를 지우고 medusa_seed 에서 다시 만든다
-//   node db.mjs publishable-key <port>      시드가 만든 publishable key 를 stdout 에 쓴다
-//   node db.mjs reader <port> <password>    읽기 전용 계정 testhub_reader 를 만든다 (있으면 비밀번호만 바꾼다).
-//                                           학습자의 DB 검증 테스트가 쓴다. snapshot 전에 해야 초기화한 DB 에도 권한이 남는다
+//   node db.mjs snapshot <port>             medusa를 복제해 medusa_seed를 만든다 (있으면 바꾼다)
+//   node db.mjs reset <port>                medusa를 지우고 medusa_seed에서 다시 만든다
+//   node db.mjs publishable-key <port> [token]
+//                                           시드가 만든 publishable key를 stdout에 쓴다. token을 주면 그 값으로 바꾼 뒤 쓴다.
+//                                           앱처럼 빌드할 때 키를 넣는 것이 쓰도록 값을 고정할 때 쓴다 (`pk_` 뒤 문자열)
+//   node db.mjs reader <port> <password>    읽기 전용 계정 testhub_reader를 만든다 (있으면 비밀번호만 바꾼다).
+//                                           학습자의 DB 검증 테스트가 쓴다. snapshot 전에 해야 초기화한 DB에도 권한이 남는다
 //
-// 접속: localhost, 사용자 postgres, 비밀번호 postgres. 서버는 localhost 에서만 듣는다 (PostgreSQL 기본값).
-// 묶음 PostgreSQL 에는 pg_dump 가 없어 초기화는 템플릿 DB 복제로 한다.
-// root 로 돌면(컨테이너, CI) PostgreSQL 이 root 로 뜨지 않으므로 postgres 사용자로 띄운다. 학습자 컴퓨터는 해당 없다.
+// 접속: localhost, 사용자 postgres, 비밀번호 postgres. 서버는 localhost에서만 수신 대기(listen)한다 (PostgreSQL 기본값).
+// 내장 PostgreSQL에는 pg_dump가 없어 초기화는 템플릿 DB 복제로 한다.
+// root로 실행되면(컨테이너, CI) PostgreSQL이 root로 뜨지 않으므로 postgres 사용자로 띄운다. 학습자 컴퓨터는 해당 없다.
 import { spawnSync } from "node:child_process"
 import { existsSync, readFileSync, realpathSync } from "node:fs"
 import { platform } from "node:os"
@@ -215,12 +217,16 @@ switch (cmd) {
     break
   }
   case "publishable-key": {
-    const [port] = args
-    if (!port) fail("사용법: publishable-key <port>")
+    const [port, fixed] = args
+    if (!port) fail("사용법: publishable-key <port> [token]")
+    if (fixed !== undefined && !/^pk_[0-9A-Za-z_-]{16,}$/.test(fixed)) fail("token은 pk_로 시작하는 16자 이상의 영문, 숫자, _, -이다")
+    const live = "type = 'publishable' and revoked_at is null and deleted_at is null"
     const token = await withClient(port, DB, async (c) => {
-      const r = await c.query(
-        "select token from api_key where type = 'publishable' and revoked_at is null and deleted_at is null order by created_at limit 1",
-      )
+      if (fixed !== undefined) {
+        // 발급할 때 Medusa가 같이 남기는 redacted(앞 6자, 뒤 3자)도 맞춘다. 판매 채널 연결은 키 id로 이어져 있어 그대로 남는다
+        await c.query(`update api_key set token = $1, redacted = $2 where ${live}`, [fixed, `${fixed.slice(0, 6)}***${fixed.slice(-3)}`])
+      }
+      const r = await c.query(`select token from api_key where ${live} order by created_at limit 1`)
       return r.rows[0]?.token
     })
     if (!token) fail("publishable key가 없다. 시드가 돌았는지 본다", 1)
