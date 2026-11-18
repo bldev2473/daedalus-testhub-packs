@@ -59,6 +59,7 @@ jobs:
           path: playground-pack/mobile/out/store-app.apk
           if-no-files-found: error
           compression-level: 0
+          retention-days: 5  # 저장 공간(무료 요금제 500MB)을 아끼려고 짧게 둔다
 
   check:
     needs: apk
@@ -139,3 +140,4 @@ jobs:
           name: store-app-emulator-check
           path: out/
           if-no-files-found: warn
+          retention-days: 14
